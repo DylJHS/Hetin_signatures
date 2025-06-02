@@ -1,0 +1,410 @@
+---
+title: "TCGA_TUMOUR_NORMAL_ANALYSIS"
+output: html_document
+date: "2024-02-22"
+Note: this is the script for the analysis of the cancerous vs non-cancerous samples from the TCGA data only. Does not incorporate the individual analyses. See TCGA_TPM_mRNA_FULL_ANALYSIS for the full analysis.
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{=html}
+<style>
+.my-table-style td, .my-table-style th {
+    color: white !important;
+}
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir =
+    "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project"
+)
+```
+
+Load the libraries
+
+```{r}
+library(ggplot2)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(plyr)
+library(coin)
+library(rstatix)
+library(ggpubr)
+library(GGally)
+library(tidyverse)
+library(psych)
+library(ggsci)
+```
+
+Load other options
+
+```{r}
+options(width = 120, max.print = 1000)
+
+```
+
+Load the RNA datasets
+
+```{r}
+set.seed(123)
+
+soi_nrm <- read.csv("Data/RNA_Data/TCGA_TPM/TCGA_Normal_mRNA_TPM_SOI.csv")
+soi_can <- read.csv("Data/RNA_Data/TCGA_TPM/TCGA_mRNA_TPM_SOI.csv")
+meta_data <- read.csv("Data/Other/TCGA_meta/tissueSourceSite.tsv", sep = "\t")
+
+```
+
+Configure function that builds the set of interest metrics
+
+```{r}
+
+calculate_summary <- function(input_dataframe) {
+  df_name <- deparse(substitute(input_dataframe))
+
+  # Calculate column means
+  means <- colMeans(input_dataframe[, -c(1, 2)], na.rm = TRUE)
+
+  # Create a new dataframe to store the summary
+  summary_dataframe <- data.frame(Mean = means)
+
+  prefix <- sub("^(.*?)_.*$", "\\1", df_name)
+
+  colnames(summary_dataframe)[colnames(summary_dataframe) == "Mean"] <-
+    paste0("geom_mean_", prefix)
+
+  return(summary_dataframe)
+}
+```
+
+Build the metrics dfs for both the tumour and the normal data and merge
+the dfs on the shared Participants
+
+```{r}
+soi_combo <- merge(calculate_summary(soi_nrm) %>%
+                     rownames_to_column(var = "id") %>%
+                     rowwise() %>%
+                     mutate(Participant = strsplit(id, "\\.")[[1]][3]) %>%
+                     select(-c("id")),
+                   calculate_summary(soi_can) %>%
+                     rownames_to_column(var = "id") %>%
+                     rowwise() %>%
+                     mutate(Participant = strsplit(id, "\\.")[[1]][3]) %>%
+                     select(-c("id")),
+                   by = "Participant",
+                   all = FALSE,
+                   suffixes = c("_nrm", "_can"))
+
+soi_combo <- soi_combo %>%
+  dplyr::rename(geom_mean_nrm_soi = geom_mean_soi_nrm,
+                           geom_mean_can_soi = geom_mean_soi_can)
+```
+
+construct a table to perform a paired wilcoxon test to assess the
+differences between the two conditions using the aggregate values of the
+SOI
+
+```{r}
+
+data <- soi_combo %>%
+  tidyr::gather(key = "Condition",
+         value = "Geom_mean", geom_mean_nrm_soi, geom_mean_can_soi)
+print(head(data, n = 15))
+```
+
+1.  Data Assessment Plotting the distribution of the difference between
+    the means to assess the symmetry and whether a wilcoxon signed rank
+    test can be applied to the data. Also assessing the 'Skew' metric
+    for the same purpose
+
+```{r}
+soi_combo$dif <- soi_combo$geom_mean_can_soi - soi_combo$geom_mean_nrm_soi
+ggplot(soi_combo, aes(x = "", y = soi_combo$dif)) +
+  stat_boxplot(geom = "errorbar",
+               width = 0.15) +
+  geom_boxplot()
+
+
+describe(soi_combo) 
+```
+
+Results: Fairly symmetrical boxplot and skew of 0.4131667
+Interpretation: Given that the plot is quite symmetrical and that the
+skew value is between 0 and 1, I can assume that the distribution is
+approximately symmetric, and can therefore use a Wilcoxon Signed Rank
+test.
+
+
+2.  SOI cancer-normal expression differences Boxplots to visualise the
+    difference between the set of interest in cancerous data and the
+    non-cancerous data
+
+```{r}
+
+bxp <- ggpaired(data, x = "Condition", y = "Geom_mean",
+                id = "Participant",
+                order = c("geom_mean_nrm_soi", "geom_mean_can_soi"),
+                ylab = "Geom_mean", xlab = "Condition",
+                color = "Condition",
+                linetype = 0,
+                line.size = 0.02,
+                line.color = "grey35",
+                ggtheme = theme_classic(), palette = "lancet") +
+  geom_line(data = subset(
+    data, Participant %in% sample(unique(data$Participant), 15)
+  ),
+  aes(group = Participant),
+  color = "purple",
+  linetype = 2)
+bxp
+```
+
+Interpretation: The plot shows a slight uptrend in the mean expression
+of the SOI when shifting from the Normal samples to the cancerous ones.
+
+Perform the wilcoxon signed rank test to detect a significant difference
+between the set of interest in cancerous data and the non-cancerous
+data.
+
+```{r}
+stat_test <- data  %>%
+  wilcox_test(Geom_mean ~ Condition, paired = TRUE, alternative = "greater") %>%
+  add_significance()
+stat_test
+
+observed_val <- stat_test$p
+```
+
+Results: The difference between the mean expression levels of the SOI in
+the cancerous and normal conditions is significant with a p_value of
+3.73e-21 when applying the one-sided wilcoxon signed rank test. 
+
+Interpretation: The significance test shows that the difference between the conditions is significant but whether or not it is meaningful partly depends on what the control groups show
+
+
+3.  Control Sets cancer-normal expression comparison
+
+```{r}
+all_combos <- soi_combo 
+
+results <- list()
+
+num_datasets <- 5
+```
+
+Perform pairwise wilcoxon signed rank test using the paired expression
+levels of the different control sets across conditions
+(normal/cancerous)
+
+```{r}
+
+for (i in 1:num_datasets) {
+
+
+  can_ctrl_file <- paste(
+    "Data/RNA_Data/TCGA_TPM/TCGA_Cancer_CTRL_Sets/TCGA_TPM_RNA_Control_df", i,
+    ".csv", sep = ""
+  )
+  can_ctrl_set <- read.csv(can_ctrl_file)
+
+  nrm_ctrl_file <- paste(
+    "Data/RNA_Data/TCGA_TPM/TCGA_Normal_CTRL_Sets/TCGA_Normal_mRNA_TPM_CTRL_Set", # nolint: line_length_linter.
+    i,
+    ".csv", sep = ""
+  )
+  nrm_ctrl_set <- read.csv(nrm_ctrl_file)
+
+
+  new_combo <- merge(calculate_summary(nrm_ctrl_set) %>%
+      rownames_to_column(var = "id") %>%
+      rowwise() %>%
+      mutate(Participant = strsplit(id, "\\.")[[1]][3]) %>%
+      select(-c("id")),
+    calculate_summary(can_ctrl_set) %>%
+      rownames_to_column(var = "id") %>%
+      rowwise() %>%
+      mutate(Participant = strsplit(id, "\\.")[[1]][3]) %>%
+      select(-c("id")),
+    by = "Participant",
+    all = FALSE
+  )
+  new_combo <- new_combo %>%
+    dplyr::mutate( dif = geom_mean_can - geom_mean_nrm) %>% 
+    dplyr::rename(
+      !!paste0("geom_mean_nrm_", i) := geom_mean_nrm,
+      !!paste0("geom_mean_can_", i) := geom_mean_can,
+      !!paste0("dif_", i) := dif
+    )
+
+  all_combos <- all_combos %>% merge(new_combo,
+    by = "Participant",
+    all = FALSE
+  )
+
+  new_data <- new_combo %>%
+    gather(key = "Condition", value = "Geom_mean", 2, 3)
+
+  new_stat_res <- new_data  %>%
+    wilcox_test(Geom_mean ~ Condition, paired = TRUE, alternative = "less") %>%
+    add_significance()
+
+  results[[i]] <- new_stat_res
+}
+
+all_combos <- all_combos %>%
+  dplyr::rename(geom_mean_nrm_soi = geom_mean_nrm_soi,
+         geom_mean_can_soi = geom_mean_can_soi,
+         dif_soi = dif
+  )
+```
+
+
+
+Combine the results into a single df and, adjust the p-value for
+multiple comparisons, assess how each control set compares to the set of
+interest and to the significance level.
+
+```{r}
+partial_results <- do.call(rbind, results)
+partial_results <- rbind(partial_results, stat_test)
+full_results <- mutate(
+  partial_results, Adjusted_p = p.adjust(partial_results$p, method = "BH"),
+  significant_value = ifelse(Adjusted_p < 0.05, "TRUE", "FALSE"),
+  greater_or_equal = ifelse(Adjusted_p <= observed_val, "TRUE", "FALSE"),
+  similar_level = ifelse(p.signif == "****", "TRUE", "FALSE")
+)
+# 
+kable(head(full_results))
+```
+
+Build table to compare the assessments made above.
+
+```{r}
+contrast_agg_count_table <- full_results[,c("significant_value","greater_or_equal","similar_level")]
+
+
+summary_table <- contrast_agg_count_table %>%
+  dplyr::reframe(across(everything(),
+                   ~ list("TRUE" = sum(. == "TRUE"), "FALSE" = sum(. == "FALSE"))))
+
+
+summary_table <- as.data.frame(t(summary_table))%>%  
+  mutate(Percent_TRUE = round(as.numeric(V1) / (as.numeric(V1) + as.numeric(V2)), 3),
+         Fract = paste(V1, "/", as.numeric(V1) + as.numeric(V2))) %>% 
+  dplyr::rename("TRUE" = V1,
+         "FALSE" = V2)
+
+kable(summary_table)
+```
+
+Results: Out of the 547 sets :
+- 110 (0.201) are also significant
+- 31 (0.057) are of similar significance level (four stars)
+- 0 are of equal or greater significance
+
+Interpretation: The difference between the condition for the set of interest is quite significant when compared to that of the control sets. 
+
+Need to get info about the directionality of the differences across the sets.
+
+
+
+```{r}
+set.seed(123)
+numbers_list <- seq(1, num_datasets)
+controls <- sample(1:num_datasets, 5)
+```
+
+```{r}
+names <- c("Participant",
+  "geom_mean_nrm_soi",
+  "geom_mean_can_soi",
+  unlist(lapply(controls, function(i) paste("geom_mean_nrm", i, sep = "_"))),
+  unlist(lapply(controls, function(i) paste("geom_mean_can", i, sep = "_")))
+)
+select_combos <- all_combos %>% dplyr::select(c(names))
+
+box_pivot_combos <- select_combos %>%
+  pivot_longer(!Participant, names_to = "set", values_to = "Expression") %>%
+  mutate(type = if_else(grepl("can", set), "Cancerous", "Normal"),
+         set_group = sub(".*_", "", set))
+
+```
+
+Boxplots to visualise the difference between the set of interest in
+cancerous data and the non-cancerous data
+
+```{r}
+
+bxp2 <- ggpaired(box_pivot_combos, x = "type", y = "Expression",
+                 id = "Participant",
+                 order = c("Normal", "Cancerous"),
+                 ylab = "Expression", xlab = "Condition",
+                 color = "type",
+                 linetype = 0,
+                 line.size = 1,
+                 line.color = "purple",
+                 ggtheme = theme_classic(), palette = "lancet") +
+  facet_wrap(~set_group, ncol = 6, scales = "free_y") +
+  geom_line(data = subset(
+    box_pivot_combos, Participant %in% sample(unique(box_pivot_combos$Participant), 9)
+  ),
+  aes(group = Participant),
+  color = "grey50",
+  linetype = 2
+  )
+
+bxp2
+```
+Interpretation: The paired plot for the SOI shows not just a greater uptrend in the mean expression
+of the SOI when shifting from the normal samples to the cancerous ones form about 3.8 to 3.9 on a log2 scale, but also a greater mean expression overall at around 3.8 versus the random control sets which reside at levels between -4 and -6 on a log2 scale. Demonstrating that the SOI is, when taken as an aggregate, over-expressed in general, and slightly up-regulated in cancer. 
+
+
+Demonstrate this with the actual log-fold changes between the cancer and normal samples across conditions.
+```{r}
+names2 <- c(
+  "dif_soi",
+  unlist(lapply(numbers_list, function(i) paste("dif", i, sep = "_")))
+)
+select_combos2 <- all_combos %>% dplyr::select(all_of(names2))
+
+pivot_main <- select_combos2 %>%
+  pivot_longer(cols = everything(), names_to = "group", values_to = "Log2FC") %>% 
+  group_by(group) %>%
+  summarise_at(vars("Log2FC"), list(mean_log2fc = mean, std_log2fc = sd))%>%
+  mutate(set = sub(".*_", "", group))
+
+```
+
+```{r}
+summary_pivot <- merge(pivot_main %>%
+  select(-c("group")),
+  full_results %>%
+    mutate( set = sub(".*_", "", group1)) %>% 
+    select(c("set", "Adjusted_p")),
+  by = "set",
+  all = FALSE
+)
+```
+
+```{r}
+p2 <- ggplot(data=summary_pivot, aes(x=mean_log2fc, y=-log10(Adjusted_p))) + 
+   geom_point(aes(size = std_log2fc), color = "grey50", fill = "grey50", alpha = 0.1) +
+  geom_point(color = "black") + 
+  theme_minimal() + 
+  geom_hline(yintercept=-log10(0.05), col="red") +
+  geom_point(data = subset(
+    summary_pivot, set == "soi"),
+    aes(group = set),
+    color = "red",
+    size = 3,
+    shape = 1
+  )+
+  theme(legend.position = "none") +
+  geom_text(data = subset(summary_pivot, set == "soi"), 
+            label = "Set of Interest",
+            hjust = 1, vjust = 2, color = "red", size = 4)
+
+p2
+```
+Interpretation: The Volcano plot cements the fact that the set of interest demonstrates a significant adn slight general up-regulation that varies greatly from the rest of the genome. 

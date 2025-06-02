@@ -1,0 +1,112 @@
+---
+title: "synergy_mds"
+output: html_document
+date: "2024-04-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+```{r}
+# Load the libraries
+
+
+library(conflicted)
+library(dplyr)
+library(knitr)
+library(tidyverse)
+library(edgeR)
+library(limma)
+library(data.table)
+library(ggpubr)
+```
+
+
+```{r}
+# REUSABLE FUNCTIONS
+
+extract_element <- function(strings, index) {
+  # Split each string by "." and extract the element at the indexed position
+  element_list <- sapply(stringr::str_split(strings, "\\."),
+                         function(x) x[index])
+  return(element_list)
+}
+
+untransform <- function(x) {
+  # Function to convert the log transformed counts back into original counts
+  return(ceiling((2^x) - 1))
+}
+```
+
+
+```{r}
+# 5.  MDS
+# Load Transposed transformed data 
+t_scaled_log_data <- read.csv("Data/RNA_Data/TCGA_Norm/mds/Transposed_scaled_&_reduced_df.csv", row.names = 1)
+
+sample_dist_matrix <- dist(t_scaled_log_data)
+sample_dist_df <- as.data.frame(as.matrix(sample_dist_matrix))
+```
+
+
+```{r}
+# Produce the MDS object.
+mds <- cmdscale(sample_dist_matrix)
+```
+
+
+```{r}
+# Convert the MDS object to a dataframe with additional features
+mds_df <- as.data.frame(mds) %>% 
+  dplyr::mutate(cancer_type = extract_element(rownames(t_scaled_log_data), 1),
+         sample_type = extract_element(rownames(t_scaled_log_data), 3),
+         synergy_type = paste(cancer_type, sample_type, sep = "-"))
+```
+
+
+```{r}
+# Create the plots of the MDS.
+sample_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2",
+  color = "sample_type", # Colour based on the sample type
+  size = 1,
+  repel = TRUE
+)
+
+cancer_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2", 
+  color = "cancer_type", # Colour based on the cancer type
+  size = 1,
+  repel = TRUE) + theme(legend.position = "none")
+
+synergy_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2", 
+          color = "cancer_type", # Colour based on the synergy between the cancer and sample type
+          shape = "sample_type",
+          size = 1,
+          repel = TRUE)+
+  theme(legend.position = "bottom")+
+  coord_cartesian(xlim = c(-35, 20),
+                  ylim = c(-25,25))
+```
+
+
+```{r}
+# Save the plots.
+ggsave("sample_mds_plot.png",   
+       plot = sample_mds,       
+       width = 8,              
+       height = 6,             
+       dpi = 300) 
+
+ggsave("cancer_mds_plot.png",   
+       plot = cancer_mds,       
+       width = 8,              
+       height = 6,             
+       dpi = 300) 
+
+ggsave("synergy_mds_plot.png",   
+       plot = synergy_mds,       
+       width = 8,              
+       height = 6,             
+       dpi = 300) 
+```
+

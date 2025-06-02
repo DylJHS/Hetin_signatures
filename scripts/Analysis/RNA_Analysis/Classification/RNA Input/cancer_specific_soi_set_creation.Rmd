@@ -1,0 +1,109 @@
+---
+title: "Cancer Specific SOI RNA set creation"
+output: html_document
+date: "2024-06-30"
+Note: This script is for the generation of RNA sets that are cancer specific.
+---
+
+
+1.  SETUP
+
+1.1. SETUP
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "")
+```
+
+1.2. Load the necessary libraries
+```{r}
+library(dplyr)
+library(tidyverse) 
+library(ggrepel)
+library(data.table)
+
+```
+
+1.3. Reusable functions
+```{r}
+extract_element <- function(strings, index) {
+  # Split each string by "." and extract the element
+  element_list <- sapply(strsplit(strings, "\\."), function(x) x[index])
+  return(element_list)
+}
+```
+
+1.4. Load the necessary data
+```{r}
+# TCGA RNA data 
+data_folder <- ""
+
+# TCGA metadata
+meta_data_folder <- "TCGA_meta"
+tss_code_file <- read_tsv(file.path(meta_data_folder, "tissueSourceSite.tsv"),show_col_types = FALSE, na = character())
+abbreviations_file <- read_tsv(file.path(meta_data_folder, "diseaseStudy.tsv"), show_col_types = FALSE)
+
+```
+
+Construct the new folder
+```{r}
+# Path to RNA
+RNA_path <- ""
+
+for (cancer in unique(abbreviations_file[['Study Abbreviation']])) {
+  if (dir.exists(paste0(RNA_path, "/", cancer))) {
+    next
+  }
+  new_folder <- paste0(RNA_path, "/", cancer)
+  dir.create(new_folder)
+}
+
+```
+
+
+```{r}
+# Loop over the RNA csv sets in the folder 
+for (set in list.files(data_folder, pattern = ".csv")) {
+  cat("\n\n Set: ", set, "\n")
+  # Load the TCGA RNA data
+  rna_set <- read.csv(file.path(data_folder, set), header = TRUE, sep = ",", row.names = 1) %>% 
+    mutate(Cancer_type = extract_element(rownames(.),2)) %>% 
+    rownames_to_column("Sample") %>%
+    left_join(
+      tss_code_file %>% 
+        select("TSS Code", "Study Name"), 
+      by = c("Cancer_type" = "TSS Code")
+      ) %>% 
+    left_join(abbreviations_file, by = "Study Name") %>% 
+    select(-c("Study Name", "Cancer_type")) %>%
+    select("Study Abbreviation", everything()) %>% 
+    rename("Cancer" = "Study Abbreviation") %>% 
+    column_to_rownames("Sample")
+  
+  # Loop over the cancer types
+  for (cancer in unique(rna_set$Cancer)) {
+    cat("\n Cancer: ", cancer, "\n")
+    # Filter the RNA set for the cancer type
+    cancer_rna_set <- rna_set %>% 
+      filter(Cancer == cancer) %>% 
+      select(-Cancer)
+    
+    if (nrow(cancer_rna_set) == 0) {
+      next
+    }
+    cat("\t Number of samples: ", nrow(cancer_rna_set), "\n")
+    
+    subfolder <- paste0("Data/Cancer_specific_data/Model_input/RNA/", cancer, "/Full")
+    if (!dir.exists(subfolder)) {
+      dir.create(subfolder)
+    }
+    
+    # Save the RNA set
+    write.csv(cancer_rna_set,
+              paste0(subfolder, "/",
+                     set),
+              row.names = TRUE)
+  }
+}
+```
+
+

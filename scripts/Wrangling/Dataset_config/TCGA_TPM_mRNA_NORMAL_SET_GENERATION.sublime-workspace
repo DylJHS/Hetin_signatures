@@ -1,0 +1,562 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"remain",
+				"remaining_number"
+			],
+			[
+				"Cor",
+				"len_Corres_GTEx_ctrl_set"
+			],
+			[
+				"mergedf",
+				"merged_df"
+			],
+			[
+				"todrop",
+				"to_drop"
+			],
+			[
+				"ra",
+				"raw_data"
+			],
+			[
+				"TPM",
+				"TPM_annotations_df"
+			],
+			[
+				"re",
+				"reset_index"
+			],
+			[
+				"rand",
+				"random_genes"
+			],
+			[
+				"Tg",
+				"TCGA_Genes"
+			],
+			[
+				"GT",
+				"GTEx_meta_df"
+			],
+			[
+				"cntrl",
+				"cntrl_RNA_df"
+			],
+			[
+				"cn",
+				"cntrl_CNV_df"
+			],
+			[
+				"ctrl",
+				"ctrl_set_CNV_df"
+			],
+			[
+				"Data",
+				"Data_type"
+			],
+			[
+				"genes",
+				"gene_set"
+			],
+			[
+				"rnd",
+				"rndm_ctrl_set_df"
+			],
+			[
+				"beau",
+				"BeautifulSoup_Scaper"
+			],
+			[
+				"BeautifulS",
+				"BeautifulSoup_Scape"
+			],
+			[
+				"stam",
+				"start_month"
+			],
+			[
+				"Doub",
+				"Doubles_full"
+			],
+			[
+				"cnvt",
+				"cnv_mean_topbottom_10"
+			],
+			[
+				"cl",
+				"cell_line"
+			],
+			[
+				"df",
+				"df_entry"
+			],
+			[
+				"MSou",
+				"MSoutcomes"
+			],
+			[
+				"MS",
+				"MSoutcomes_pca_ready"
+			],
+			[
+				"MSout",
+				"MSoutcomes_ready"
+			],
+			[
+				"Dou",
+				"Doubles_points_sets"
+			],
+			[
+				"wome",
+				"women_round_pts_median"
+			],
+			[
+				"un",
+				"unique_names"
+			],
+			[
+				"group",
+				"grouped_percentage"
+			],
+			[
+				"Losing",
+				"Losing_player1"
+			],
+			[
+				"Losing_p",
+				"Losing_player"
+			],
+			[
+				"pc",
+				"pcent_bet"
+			],
+			[
+				"Sign",
+				"Singles_traits"
+			],
+			[
+				"WS",
+				"WS_WTR"
+			],
+			[
+				"Los",
+				"Loser_world_tour_rank"
+			],
+			[
+				"Winner",
+				"Winner_world_tour_rank"
+			],
+			[
+				"bo",
+				"bootstrap_samp"
+			],
+			[
+				"me",
+				"mean_acceptor"
+			],
+			[
+				"Dis",
+				"Distances"
+			],
+			[
+				"sfu",
+				"surf_data_cor"
+			],
+			[
+				"su",
+				"surf_data_cor"
+			],
+			[
+				"di",
+				"dist_data"
+			],
+			[
+				"pss",
+				"pssm_out_data"
+			],
+			[
+				"read",
+				"read_AccUnfold"
+			],
+			[
+				"soc",
+				"score_j"
+			],
+			[
+				"ali",
+				"align"
+			],
+			[
+				"rev",
+				"rev_seq2"
+			],
+			[
+				"oppwr",
+				"Opponent_World_Rank"
+			],
+			[
+				"Hy",
+				"HYSTER24month"
+			],
+			[
+				"Kone",
+				"KONECRANE"
+			],
+			[
+				"Hys",
+				"HYSTER"
+			],
+			[
+				"qtyi",
+				"qty_stockitem"
+			],
+			[
+				"T",
+				"Title"
+			],
+			[
+				"Rott",
+				"Rotten_Tomatoes_pct"
+			],
+			[
+				"R",
+				"Rotten"
+			],
+			[
+				"Net",
+				"Netflix_rating"
+			]
+		]
+	},
+	"buffers":
+	[
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"insta",
+				"Package Control: Install Package"
+			],
+			[
+				"install",
+				"Package Control: Install Package"
+			],
+			[
+				"packa",
+				"Package Control: Add Channel"
+			],
+			[
+				"Package Control: ",
+				"Package Control: Install Package"
+			],
+			[
+				"Package Control: ins",
+				"Package Control: Install Package"
+			],
+			[
+				"st: setu",
+				"ST: Setup Connections"
+			],
+			[
+				"ST: set",
+				"ST: Setup Connections"
+			],
+			[
+				"ins",
+				"Package Control: Install Package"
+			],
+			[
+				"inst",
+				"Package Control: Install Package"
+			]
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 348.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_GTEx_DF_CONFIG.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_TUMOUR_NORMAL_DF.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_TPM_mRNA_NORMAL_SET_GENERATION.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/testing.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_TPM_mRNA_CONTROL_SET_GENERATION.py",
+		"/Users/Dyll/Documents/Education/UM/Courses/Cinema/CIM204-History_International_Cinema/Essays /Dylan Haynes-Simmons. midterm paper .pdf",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/full.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Tournament/testing.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Tournament/Tournament_Scraper_Functions.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Tournament/BWF_FULL_TOUR_SCRAPER_v2.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Tournament/bwf_raw_scrap_to_json.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/scrap_bwf_calend.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrapping_dates.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/GTEx_RNA_DF_Configs.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_TPM_DFs_Config.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_TPM_mRNA_SOI&Cntrl_DF_Config.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TXT_2_CSV_DF.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_TPM_mRNA_SOI&Cntrl_DF_Config2.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/STRING_SCRIPTS/STRING_GENE_LIST_function2.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_mRNA_SOI&Cntrl_DF_Config.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/RNA_Python_to_R.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/GTEx_2_R.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/RNA_Analysis/GTEx_RNA_Preprocessing.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/RNA_Analysis/TCGA_RNA_TPM_Preprocessing.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/TCGA_CNV_SOI&Cntrl_DF_Config.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/testing.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/GTEx_RNA_DF_Initial_Config.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/RNA_Analysis/GTEx_RNA_DF_Config_2.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Dataset_config/GTEx_RNA_DF_Config.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/RNA_Analysis/Analysis_Pipe_RNA.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/NBA/OddsPortal/Scripts/test.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/NBA/OddsPortal/Scripts/Roulette_strat_tester.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/GTEx_RNA_DF_Config.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/TCGA_CNV_Full_DF_Config.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/TCGA_CNV_Full_DF_Processing.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/test.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/TCGA_CNV_FULL_DF.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/TCGA_mRNA_Datasets.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/TCGA_CNV_DF_Creation.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/CNV_Genome_Creation.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/TCGA_to_R.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/CNV_Analysis/Analysis_Pipe_CNV_today.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/CNV_Analysis/CNV_Analysis_1.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/NBA/OddsPortal/Scripts/nba_betting_test.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Base.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/STRING_candidate_proteins_requests.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/crypt.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/STRING_GENE_LIST.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/NBA/OddsPortal/Scripts/betting_test.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/graph.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Tournament/BeautifulSoup_Tourney_scraper.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/pract.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/TCGA_to_R1.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/pureplay.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/pract.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/Control_iteration_pract.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Wrangling/TCGA_mRNA_Import1.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/pract.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/RNA/Analysis_Pipe_RNA.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/RNA/RNA_Analysis.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts/Analysis/CNV/Analysis_Pipe_CNV_today.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Analysis/Analysis_Pipe_RNA.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Analysis/Analysis_Pipe_CNV.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Analysis/pract.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Analysis/TCGA_to_R.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Wrangling/RNA_Python_to_R.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Wrangling/TCGA_mRNA_Import1.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Pipeline/TCGA_CNV_DF_Creation.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Analysis/RNA_Python_to_R.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Pipeline/TCGA_mRNA_Import.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Pipeline/Xena_import.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/RNA_Python_to_R.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/RNA_Analysis.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/R_RNA_Analysis.R",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/CNV_Analysis.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/STRING_GENE_LIST.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/Xena_import.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/STRING_Request_Debug.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/STRING_candidate_proteins_requests.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/pract.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Tournament/BWF_FULL_TOUR_SCRAPER.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Rank_Scrapping/bwf_scrap_doubles_world_rank_v1.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Tournament/Selenium_Tourney_Scraper.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Tournament/BWF_matches.py",
+		"/Users/Dyll/Downloads/TCGA.PANCAN.sampleMap_Gistic2_CopyNumber_Gistic2_all_data_by_genes",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/bwf_raw_to_full.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Edits.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/ENCODE CELL LINE ASSAYS EXTRACTION.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/atcc_extract.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Scripts/atcc_extrct_sel.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Data/Histone ChIP-seq types",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/Histone ChIP-seq types",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/ENCODE CELL LINE ASSAYS EXTRACTION.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/atcc_extract.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Main Project/atcc_extrct_sel.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/NBA/OddsPortal/Scripts/Oddsport_scrp.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/scrap_bwf_tournies.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Analy.py",
+		"/Users/Dyll/Downloads/epi_seq.fa.tar",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_raw_scrap_to_json.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Player_profiles/doubles_playerdf.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/FUNCTIONS.PY",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Player_profiles/singles_player_df.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/BADMINTON STATS",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Pract.py",
+		"/Users/Dyll/Downloads/GSE143653_family.soft",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/NBA/OddsPortal/Scripts/Kelly.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/NBA/nba.py",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Procedural Docs/Research Proposal Draft",
+		"/Users/Dyll/Documents/Education/VU_UVA/Internship:Research Proj/Epigenetics/Janssen Group - UMC Utrecht/Procedural Docs/Research Project Procedural Workflow:",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_singles_world_rank_v1.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_singles_players.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/workflow",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/scrape_tools",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_doubles_world_rank_v1.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Player_Profile_Scrapping.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/pract copy.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_doubles_players.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_singles_WT_rank.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_doubles_WT_rank.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_doubles_world_rank.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/scrapping_draft22.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_world_rank.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_rank.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/scrap_draft2.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/Oddsport_Selenium_TEMPLATE.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/scrap_draft.py",
+		"/Users/Dyll/Documents/Code/sublimetxt/SportsB/Badminton/Scripts/Scraping/bwf_scrap_singles_W_rank.py"
+	],
+	"find":
+	{
+		"height": 26.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": true,
+		"find_history":
+		[
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"scrollbar_highlights": true,
+		"show_context": true,
+		"use_buffer2": true,
+		"use_gitignore": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"sheets":
+			[
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 26.0
+	},
+	"input":
+	{
+		"height": 38.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"pinned_build_system": "Packages/Python/Python.sublime-build",
+	"project": "TCGA_TPM_mRNA_NORMAL_SET_GENERATION.sublime-project",
+	"replace":
+	{
+		"height": 48.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"",
+				"~/Document/Code/sublimetxt/corona.py"
+			]
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": false,
+	"show_open_files": true,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 150.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}

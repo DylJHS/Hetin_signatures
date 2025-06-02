@@ -1,0 +1,1574 @@
+---
+title: "XGB full prediction"
+output: html_document
+date: "2024-06-27"
+note: "This file is intended to be used for the full prediction of the XGB model 
+from the soi RNAseq data to the final predictions from the meta learners"
+---
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+Set the parameters
+```{r}
+# Select the cancer type from the list
+cancer_type <- "LUSC"
+
+
+cancer_types <- c(
+  "BLCA", "BRCA", "CESC",
+  "HNSC", "LGG", "LIHC",
+  "LUAD", "LUSC", "OV",
+  "PRAD", "STAD", "THCA"
+)
+
+# The interval between print statements for the xgboost model during cross-validation
+print_every <- 100
+
+# Set the working directory
+setwd("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+
+# Set the path for inputs
+input_path <- "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/Cancer_specific_data/Model_input"
+
+# Set the path for the outputs
+output_path <- "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/Cancer_specific_data/Model_output"
+
+# Set the order for the response features
+response_features_order <- c(
+  "1p", "1q", "2p", "2q", "3p", "3q", "4p", "4q", "5p", "5q","6p", "6q", "7p", "7q", "8p", "8q", "9p", "9q", "10p", "10q", "11p", "11q", "12p", "12q", "13q", "14q", "15q", "16p", "16q", "17p", "17q", "18p", "18q", "19p", "19q", "20p", "20q", "21q", "22q", "ai1", "lst1", "loh_hrd", "peri_1",
+  "peri_2", "peri_3", "peri_4", "peri_5", "peri_7", "peri_8", "peri_9", "peri_10", "peri_16_1", "peri_16_2", "peri_17", "peri_20", "peri_22_3"
+)
+```
+
+Load the packages
+```{r}
+# Load the packages
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(xgboost)
+library(caret)
+library(ggplot2)
+library(pheatmap)
+library(ggraph)
+library(igraph)
+```
+
+
+FUNCTIONS
+```{r}
+# Load the functions
+# Function to map factor levels to weights
+feature_digit_function <- function(factors, reference) {
+  sapply(factors, function(x) reference[as.numeric(x)])
+}
+
+# Function to extract the fold indices from the folds
+combine_all_folds <- function(folds) {
+  all_indices <- c()
+  for (fold in folds) {
+    all_indices <- c(all_indices, fold)
+  }
+  return(all_indices)
+}
+
+# Function to calculate the confusion matrix using the caret package and return the confusion matrix object
+calculate_confusion_matrix <- function(predictions_df, predicted_col, true_col) {
+  # Ensure the input columns exist in the predictions dataframe
+  if (!predicted_col %in% names(predictions_df) || !true_col %in% names(predictions_df)) {
+    stop("Specified columns do not exist in the provided dataframe")
+  }
+
+  # Create the confusion matrix
+  cm <- confusionMatrix(
+    data = factor(predictions_df[[predicted_col]], levels = c(-1, 0, 1)),
+    reference = factor(predictions_df[[true_col]], levels = c(-1, 0, 1))
+  )
+
+  # Return the confusion matrix object
+  return(cm)
+}
+
+# Function to extract the true positive rate from the confusion matrix and create the heatmap
+tpr_confusion_matrix <- function(object, feature, learner_type) {
+  new_table <- pivot_wider(as.data.frame(object$table), names_from = Reference, values_from = Freq, values_fill = list(frequency = 0)) %>%
+    column_to_rownames("Prediction") %>%
+    sweep(., 2, colSums(.), "/") %>%
+    round(., 2) %>%
+    rownames_to_column("Prediction") %>%
+    pivot_longer(., cols = -Prediction, names_to = "Reference", values_to = "TPR") %>%
+    mutate(TPR = round(TPR, 2))
+
+  graph <- ggplot(new_table, aes(x = Reference, y = Prediction, fill = TPR)) +
+    geom_tile() +
+    geom_text(aes(label = TPR), vjust = 1) +
+    scale_fill_gradient(
+      low = "#FFEBEE", high = "#B71C1C",
+      limits = c(0, 1)
+    ) +
+    theme_minimal() +
+    labs(
+      title = paste0(
+        learner_type,
+        " Learner Performance for ",
+        feature
+      ),
+      x = "Actual Class",
+      y = "Predicted Class"
+    ) +
+    theme(
+      axis.text.x = element_text(hjust = 1), # Adjust text angle for better legibility
+      plot.title = element_text(hjust = 0.5),
+      legend.title = element_blank()
+    )
+
+  # save the plot
+  filefold <- file.path(
+    output_path,
+    cancer_type,
+    "Plots/Predictions/Categorical/Confusion_matrices")
+  if (!dir.exists(filefold)) {
+    dir.create(filefold, recursive = TRUE)
+  }
+
+  # Save the heatmap
+  ggsave(
+    filename = paste0(
+      filefold, "/",
+      feature, "_",
+      learner_type,
+      "_TPR_Heatmap.png"
+    ),
+    plot = graph,
+    width = 10,
+    height = 10
+  )
+}
+
+# Function to get the stats from the confusion matrix object
+create_confusion_matrix_data <- function(obj, type) {
+  as.data.frame(obj$byClass) %>%
+    rownames_to_column("Class") %>%
+    mutate(Type = type) %>%
+    dplyr::select(-c(
+      "Pos Pred Value", "Neg Pred Value",
+      "Prevalence", "Detection Rate",
+      "Detection Prevalence", "Sensitivity"
+    )) %>%
+    pivot_longer(cols = -c(Type, Class), names_to = "Metric", values_to = "Value") %>%
+    as.data.frame()
+}
+
+
+# Function to create the plot based on the confusion matrix stats by learner type
+confusion_stat_plot <- function(data) {
+  Feature <- data$Feature[1]
+
+  metrics_plt <- data %>%
+    ggplot(aes(x = factor(Metric, levels = rev(c(
+      "Balanced Accuracy", "F1", "Precision",
+      "Recall", "Specificity"
+    ))), y = Value, fill = Type)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    coord_flip() +
+    scale_fill_manual(values = c("#ABDDDE", "#CCEDB1", "#41B7C4")) +
+    facet_wrap(~Class) +
+    theme_minimal() +
+    labs(
+      title = paste0("Model Performance Stats for ", Feature),
+      x = "Class",
+      y = "Value"
+    ) +
+    scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.text.y = element_text(size = 10, face = "bold"),
+      plot.title = element_text(hjust = 0.5),
+      panel.grid.major.x = element_line(
+        colour = "grey",
+        linetype = 2
+      ),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.spacing = unit(4, "lines")
+    )
+
+  # save the plot
+  filefold <- file.path(
+    output_path,
+    cancer_type,
+    "Plots/Predictions/Categorical/Stat_metrics"
+    )
+  if (!dir.exists(filefold)) {
+    dir.create(filefold, recursive = TRUE)
+  }
+
+  ggsave(
+    filename = file.path(filefold, paste0(
+      Feature,
+      "_Stats.pdf"
+    )),
+    plot = metrics_plt,
+    width = 10,
+    height = 10
+  )
+}
+
+
+# Feature importance function to create the df and sort based on the Gain and plot the top 10 features
+feat_imp <- function(imp_df, top_gene_num = 10, basis = "Gain", Type) {
+  # Create the feature importance matrix
+  created_imp <- imp_df %>%
+    group_by(Feature) %>%
+    summarise_all(mean) %>%
+    dplyr::arrange(desc(.data[[basis]]))
+
+  type_file_folder <- ifelse(Type == "Meta", "Meta_feat_imp/", "Base_feat_imp/")
+  csv_filefold <- file.path(
+    output_path,
+    cancer_type,
+    "Results/Feature_importance",
+    type_file_folder
+  )
+  if (!dir.exists(csv_filefold)) {
+    dir.create(csv_filefold, recursive = TRUE)
+  }
+  
+  # Save the feature importance df
+  write.csv(
+    created_imp,
+    paste0(
+      csv_filefold,
+      feature,
+      "_feature_importance.csv"
+    )
+  )
+
+  # Create the plot for the top 10 features
+  top_genes <- created_imp %>%
+    dplyr::select(dplyr::all_of(c("Feature", basis))) %>%
+    top_n(top_gene_num, .data[[basis]]) %>%
+    dplyr::arrange(dplyr::desc(.data[[basis]]))
+
+  # Create the plot
+  top_genes_plot <- ggplot(
+    top_genes[1:top_gene_num, ],
+    aes(
+      x = reorder(Feature, .data[[basis]]),
+      y = .data[[basis]]
+    )
+  ) +
+    geom_bar(stat = "identity", fill = "steelblue") +
+    labs(
+      title = paste0("Top ", top_gene_num, " Features for ", feature),
+      x = "Feature",
+      y = basis
+    ) +
+    coord_flip() +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    )
+
+  # Save the plot
+  plt_filefold <- file.path(
+    output_path,
+    cancer_type,
+    "Plots/Feature_importance",
+    type_file_folder
+  )
+  if (!dir.exists(plt_filefold)) {
+    dir.create(plt_filefold, recursive = TRUE)
+  }
+
+  ggsave(
+    filename = paste0(
+      plt_filefold,
+      "/",
+      feature,
+      "_Top_",
+      top_gene_num,
+      "_Features.pdf"
+    ),
+    plot = top_genes_plot,
+    width = 10,
+    height = 10
+  )
+
+  return(list(feature_imp_df = created_imp, top_genes = top_genes))
+}
+
+# Function to create a predicted vs actual plot
+pred_vs_actual_plot <- function(data, feature, type, plot_title_prefix = "Predicted vs Actual for ") {
+  plt <- ggplot(data, aes_string(
+    x = paste0("pred_", feature), # Predicted on x-axis
+    y = paste0("act_", feature) # Actual on y-axis
+  )) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    labs(
+      title = paste0(plot_title_prefix, str_replace_all(feature, "_", " ")),
+      x = "Predicted",
+      y = "Actual",
+      caption = paste0("Linear Regression R² = ", get(paste0("r2_", type)))
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+      axis.title = element_text(size = 14),
+      panel.border = element_rect(linetype = "solid", color = "black", fill = NA, size = 0.5),
+      panel.grid.major = element_line(color = "gray20", size = 0.2),
+      panel.grid.minor = element_line(color = "gray85", size = 0.1)
+    )
+
+  # Save the plot
+  filefold <- file.path(
+    output_path,
+    cancer_type,
+    "Plots/Predictions/Regression/Residual_plts"
+    )
+  if (!dir.exists(filefold)) {
+    dir.create(filefold, recursive = TRUE)
+  }
+
+  ggsave(
+    filename = paste0(
+      filefold,
+      "/",
+      type, "_",
+      feature,
+      "_Pred_vs_Actual.pdf"
+    ),
+    plot = plt,
+    width = 10,
+    height = 10
+  )
+}
+```
+
+RNA SETS
+```{r}
+# Set the constant variables
+# The RNA list
+rna_list <- list(
+  transcripts_per_million = "tpm",
+  scaled_transcripts_per_million = "scld_tpm",
+  log_scaled_transcripts_per_million = "log_scld_tpm",
+  log_transcripts_per_million = "log_tpm",
+  expected_counts = "exp",
+    scaled_expected_counts = "scld_exp",
+  log_expected_counts = "log_exp",
+  log_scaled_expected_counts = "log_scld_exp"
+)
+```
+
+RESPONSE FEATURES
+```{r}
+# The CIN response features
+# Categorical features
+cat_cin <- read_tsv(
+  paste0(
+    input_path,
+    "/CIN/PANCAN_ArmCallsAndAneuploidyScore_092817.txt"
+  ),
+  show_col_types = FALSE
+) %>%
+  replace(is.na(.), 0) %>%
+  dplyr::select(-c("Type", "Aneuploidy Score")) %>%
+  mutate(Sample = str_replace_all(Sample, "-", "\\.")) %>%
+  column_to_rownames("Sample") %>%
+  mutate_all(~ replace(., . == 1, 2)) %>%
+  mutate_all(~ replace(., . == 0, 1)) %>%
+  mutate_all(~ replace(., . == -1, 0)) %>%
+  dplyr::rename(
+    "13q" = "13 (13q)",
+    "14q" = "14 (14q)",
+    "15q" = "15 (15q)",
+    "21q" = "21 (21q)",
+    "22q" = "22 (22q)"
+  )
+
+cat("\n Categorical CIN:  \n")
+print(head(cat_cin[20:30]))
+
+# Numerical features
+# HRD scores
+ori_hrd <- read_tsv(
+  paste0(input_path, "/CIN/TCGA.HRD_withSampleID.txt"),
+  show_col_types = FALSE
+)
+
+t_hrd <- as.data.frame(t(ori_hrd))
+first_hrd <- t_hrd
+colnames(first_hrd) <- t_hrd[1, ]
+hrd <- as.data.frame(first_hrd[-1, ]) %>%
+  mutate_all(as.numeric) %>%
+  dplyr::rename(loh_hrd = "hrd-loh") %>%
+  dplyr::select(-HRD) %>%
+  mutate(new = str_replace_all(rownames(.), "-", "\\."))
+
+rm(first_hrd)
+rm(ori_hrd)
+rm(t_hrd)
+
+rownames(hrd) <- hrd$new
+hrd <- hrd %>%
+  dplyr::select(-new)
+
+# print(head(hrd))
+
+# Pericentromeric CNVs
+peri_cnv <- read.csv(
+  paste0(
+    input_path,
+    "/CIN/lim_alpha_incl_TCGA_pericentro.csv"
+  )
+) %>%
+  mutate_all(~ replace(., is.na(.), 0)) %>%
+  mutate(sampleID = gsub("-", ".", sampleID)) %>%
+  column_to_rownames("sampleID")
+
+# print(dim(peri_cnv))
+```
+
+HYPERPARAMETERS
+```{r}
+base_cat_parameters <- read.csv(
+    paste0(
+      input_path,
+      "/Parameters/Hyperparameters/",
+      cancer_type,
+      "/base_cat_hyperparams.csv"
+    )
+  )
+  base_reg_parameters <- read.csv(
+    paste0(
+      input_path,
+      "/Parameters/Hyperparameters/",
+      cancer_type,
+      "/base_reg_hyperparams.csv"
+    )
+  )
+
+meta_parameters <- read.csv(
+  paste0(
+      input_path,
+      "/Parameters/Hyperparameters/",
+      cancer_type,
+      "/meta_hyperparameters.csv"
+    )
+  )
+```
+
+FULL CIN DF
+```{r}
+reg_cin <- merge(
+  hrd,
+  peri_cnv,
+  by = "row.names"
+) %>%
+  mutate(Row.names = str_replace_all(Row.names, "-", ".")) %>%
+  column_to_rownames("Row.names")
+cat("\n Regression CIN:  \n")
+print(head(reg_cin[1:5]))
+
+# rm(peri_cnv)
+# rm(hrd)
+
+full_cin <- merge(
+  cat_cin,
+  reg_cin,
+  by = "row.names"
+) %>%
+  column_to_rownames("Row.names")
+cat("\n Full CIN:  \n")
+print(head(full_cin[1:5]))
+
+# All response feature names
+all_response_features <- colnames(full_cin)
+reg_features <- colnames(reg_cin)
+cat_features <- colnames(cat_cin)
+cat(
+  "\n Response Features # :", length(all_response_features), "\n",
+  "Regression Features # :", length(reg_features), "\n",
+  "Categorical Features # :", length(cat_features), "\n"
+)
+
+# rm(reg_cin)
+# rm(cat_cin)
+```
+
+Check and track invalid features for the cancer type
+```{r}
+# Keep list of invalid features 
+invalid_features <- c()
+
+# Check which features are not valid for this cancer type by checking if the RNA set is NA
+for (feature in cat_features) {
+  if (is.na(base_cat_parameters[base_cat_parameters$Feature == feature, ]$Trees)) {
+    invalid_features <- c(invalid_features, feature)
+  }
+}
+for (feature in reg_features) {
+  print(feature)
+  if (is.na(base_reg_parameters[base_reg_parameters$Feature == feature, ]$Trees)) {
+    invalid_features <- c(invalid_features, feature)
+  }
+}
+
+# Remove the invalid features from the response features
+response_features <- setdiff(all_response_features, invalid_features)
+```
+
+FOLDS
+```{r}
+# Create the folds to be used
+# Create the full data by merging the soi & cancerous RNA data with the CIN data
+full_data <- merge(
+  read.csv(
+    paste0(
+      input_path,
+        "/RNA/",
+        cancer_type,
+        "/Full/tpm_soi.csv"
+    ),
+    row.names = 1
+  ),
+  full_cin,
+  by = "row.names"
+)
+
+cat("\n Full Data:  \n")
+print(head(full_data[1:5]))
+
+# Creating the folds and returning the indices for the out-of-fold predictions only
+folds <- createFolds(full_data[["1p"]], k = 5, list = TRUE, returnTrain = FALSE)
+cat("\n Folds # :", length(folds), "\n")
+
+# Create the empty dataframe that will store the out-of-fold predictions for each model
+base_oof_predictions <- data.frame(
+  matrix(
+    ncol = length(response_features),
+    nrow = length(combine_all_folds(folds))
+  )
+)
+colnames(base_oof_predictions) <- paste0("pred_", response_features)
+
+cat("\n Predictions Dataframe:  \n")
+print(head(base_oof_predictions[1:5]))
+```
+
+LABELS
+```{r}
+# Get the actual (true) fold labels
+labels <- full_data %>%
+  dplyr::select(all_of(intersect(response_features, colnames(.)))) %>%
+  mutate(
+    index = as.factor(row_number())
+  ) %>%
+  rename_with(~ paste0("act_", .))
+
+# merge the fold labels with the empty predictions dataframe
+# making sure to keep the order of the original indices
+base_oof_predictions <- cbind(base_oof_predictions, labels) %>%
+  dplyr::arrange(act_index)
+```
+
+BASE TRAINING
+```{r}
+# Create the full feature importance dataframe
+full_feature_imp <- data.frame()
+
+for (feature in response_features[1:length(response_features)]) {
+  cat(
+    "Feature: ", feature, "\n\n"
+  )
+
+  # Create df to store the importance matrix
+  feature_imp_df <- data.frame()
+
+  # Create the out-of-fold predictions column
+  oof_predictions <- numeric(nrow(base_oof_predictions))
+
+  # Determine parameter set based on feature type
+  parameters <- if (feature %in% cat_features) {
+    base_cat_parameters
+  } else if (feature %in% reg_features) {
+    base_reg_parameters
+  } else {
+    cat("Feature not found")
+    next
+  }
+
+  # Select the parameters and weights corresponding to the feature
+  selected_parameters <- parameters[parameters$Feature == feature, ]
+  # Check if the selected parameters are empty
+  if (nrow(selected_parameters) == 0) {
+    cat("No parameters found for feature: ", feature, "\n")
+    next
+  }
+
+  # Print selected parameters
+  # cat("\n Selected Parameters:\n")
+  # print(selected_parameters)
+
+  # Load and prepare data
+  rna_selection_name <- rna_list[[selected_parameters$RNA_set]]
+  rna_set <- read.csv(
+    paste0(
+     input_path,
+        "/RNA/",
+        cancer_type,
+        "/Full/",
+        rna_selection_name,
+        "_soi.csv"
+    ),
+    row.names = 1
+  )
+
+  full_df <- merge(rna_set, full_cin, by = "row.names")
+
+  y <- ifelse(feature %in% cat_features, as.integer, as.numeric)(full_df[[feature]])
+  # cat("\n y: ")
+  # print(head(y, 15))
+
+  X <- full_df %>%
+    dplyr::select(-c("Row.names", all_of(all_response_features))) %>%
+    as.data.frame()
+
+  # Initialize containers for predictions and feature importance
+  oof_predictions <- numeric(nrow(X))
+  feature_imp_df <- data.frame()
+
+  # Fold-wise training
+  for (fold_index in seq_along(folds)) {
+    cat(
+      "\n Fold: ", fold_index, "\n"
+    )
+    train_indices <- setdiff(seq_len(nrow(full_df)), folds[[fold_index]])
+    valid_indices <- folds[[fold_index]]
+
+    train_data <- xgb.DMatrix(data = as.matrix(X[train_indices, ]), label = y[train_indices])
+    valid_data <- xgb.DMatrix(data = as.matrix(X[valid_indices, ]), label = y[valid_indices])
+   
+    
+    # Adjust weights for categorical features
+    if (feature %in% cat_features) {
+      selected_ref <- as.numeric(
+        selected_parameters[c(
+          "Weight_loss",
+          "Weight_normal",
+          "Weight_gain"
+        )]
+      )
+      weights <- as.numeric(feature_digit_function(factor(y[train_indices], levels = c(0, 1, 2)), selected_ref))
+      setinfo(train_data, "weight", weights)
+    }
+
+    # Train model
+    params_list <- list(
+      data = train_data,
+      nrounds = selected_parameters$Trees,
+      objective = ifelse(feature %in% cat_features, "multi:softmax", "reg:squarederror"),
+      eval_metric = ifelse(feature %in% cat_features, "mlogloss", "rmse"),
+      max_depth = selected_parameters$Max_depth,
+      min_child_weight = selected_parameters$Child_weight,
+      eta = selected_parameters$Eta,
+      gamma = selected_parameters$Gamma,
+      watchlist = list(eval = valid_data),
+      print_every_n = print_every
+    )
+
+    # Only add num_class for categorical features
+    if (feature %in% cat_features) {
+      params_list$num_class <- 3
+    }
+
+    xgb_model <- do.call(xgb.train, params_list)
+
+    # Store OOF predictions
+    oof_predictions[valid_indices] <- predict(xgb_model, valid_data)
+    # cat(
+    #   "\n OOF Predictions: \n",
+    #   dim(oof_predictions), "\n"
+    # )
+    # print(head(oof_predictions, 10))
+
+    # Create the feature importance matrix
+    importance_matrix <- xgb.importance(feature_names = colnames(X), model = xgb_model)
+
+    # Store the importance matrix in the dataframe
+    feature_imp_df <- rbind(feature_imp_df, as.data.frame(importance_matrix))
+  }
+
+  # Store the predictions in the corresponding column
+  base_oof_predictions[[paste0("pred_", feature)]] <- oof_predictions
+  print(base_oof_predictions[[paste0("pred_", feature)]][1:10])
+
+  # get the feature imp df
+  imp <- feat_imp(imp_df = feature_imp_df, top_gene_num = 10, basis = "Gain", Type = "Base")
+
+  top_genes <- imp$top_genes
+
+  full_feature_imp <- rbind(
+    full_feature_imp,
+    imp$feature_imp_df %>%
+      mutate(Target = feature)
+  ) %>%
+    dplyr::arrange(desc(Gain))
+}
+
+output_folder <- file.path(
+  output_path,
+  cancer_type,
+  "Results"
+)
+if (!dir.exists(output_folder)) {
+  dir.create(output_folder, recursive = TRUE)
+}
+
+# Save the feature importance df
+write.csv(
+  full_feature_imp,
+  file.path(output_folder, "/Feature_importance/Full_base_feature_importance.csv")
+)
+
+# Save the predictions
+write.csv(
+  base_oof_predictions,
+  file.path(output_folder, "/Predictions/Full_base_predictions.csv")
+)
+
+base_oof_predictions <- base_oof_predictions %>%
+  column_to_rownames("act_index")
+
+cat("\n\n Training the base models complete")
+```
+
+General Base_layer Feature Importance Plot
+```{r}
+# import the feature importance df
+full_feature_imp <- read.csv(
+  file.path(
+    output_path,
+    cancer_type,
+    "Results/Feature_importance/Full_base_feature_importance.csv"
+  ),
+  row.names = 1
+)
+
+# Plot of the top feature for each target
+top_gene_each <- full_feature_imp %>%
+  group_by(Target) %>%
+  top_n(1, Gain) %>%
+  dplyr::arrange(desc(Gain))
+
+# Heatmap of the top features
+top_genes_complete <- full_feature_imp %>%
+  filter(Feature %in% top_gene_each$Feature) %>%
+  dplyr::select(Feature, Target, Gain) %>%
+  pivot_wider(names_from = Feature, values_from = Gain) %>%
+  replace(is.na(.), 0) %>%
+  replace(is.null(.), 0) %>% 
+  pivot_longer(!Target, names_to = "Feature", values_to = "Gain") %>%
+  mutate(Target = factor(Target, levels = response_features_order),
+         Gain = round(Gain, 3)) %>% 
+  dplyr::arrange(Target, desc(Gain))
+
+# Save the top genes
+write.csv(
+  top_genes_complete,
+  file.path(
+    output_path,
+    cancer_type,
+    "Results/Feature_importance/Top_genes_complete.csv"
+  )
+)
+
+# Calculate the Uniform Gain Threshold (1/number of unique genes in the gene set)
+midpoint <- round(1 / length(unique(full_feature_imp$Feature)), 3)
+
+genomic_heatmap <- ggplot(top_genes_complete, aes(x = Feature, y = Target, fill = Gain)) +
+  geom_tile(colour = "black", lwd = 0.3) +
+  scale_fill_gradient2(low = "white", mid = "white", high = "#D21717", midpoint = midpoint) +
+  labs(title = "",
+       x = "Gene",
+       y = "Base Learner",
+       caption = paste0("Uniform Gain Threshold: ", midpoint),
+       subtitle = paste0("Cancer type: ", cancer_type)) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black", size = 10),
+    axis.text.y = element_text(angle = 0, hjust = 1, color = "black", size = 11),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    plot.subtitle = element_text( size = 12),
+    legend.title = element_text(size = 15, face = "bold"),
+    legend.position = "top",
+    axis.title = element_text(size = 17, face = "bold"),
+    plot.caption = element_text(size = 11, face = "italic")
+  )
+
+print(genomic_heatmap)
+
+# Save the heatmap
+ggplot2::ggsave(
+  filename = paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Plots/Feature_importance/Base_feature_importance.pdf"
+  ),
+  plot = genomic_heatmap,
+  width = 9,
+  height = 10
+)
+
+```
+
+META MODEL INITIALIZATION
+```{r}
+# Upload the base predictions if not already loaded
+if (!exists("base_oof_predictions")) {
+  base_oof_predictions <- read.csv(
+    paste0(
+      output_path,
+      "/",
+      cancer_type,
+      "/Results/Predictions/Full_base_predictions.csv"
+    ),
+    row.names = 1
+  )
+}
+
+# Create the training folds
+meta_folds <- createFolds(base_oof_predictions[["act_1p"]], k = 5, list = TRUE, returnTrain = FALSE)
+
+# Create the empty dataframe that will store the out-of-fold predictions for each model of the meta learners
+meta_oof_predictions <- data.frame(
+  matrix(
+    ncol = length(response_features),
+    nrow = length(combine_all_folds(meta_folds))
+  )
+)
+colnames(meta_oof_predictions) <- paste0("pred_", response_features)
+
+cat("\n Predictions Dataframe:  \n")
+print(head(meta_oof_predictions[1:5]))
+
+meta_oof_predictions <- cbind(
+  meta_oof_predictions,
+  labels
+) %>%
+  dplyr::arrange(act_index) %>%
+  column_to_rownames("act_index")
+```
+
+META TRAINING
+```{r}
+# Create the predictor data for the meta learners
+meta_input_data <- base_oof_predictions %>%
+  dplyr::select(starts_with("pred_")) %>%
+  rename_with(~ str_replace(., "pred_", ""))
+
+label_data <- base_oof_predictions %>%
+  dplyr::select(starts_with("act_")) %>%
+  rename_with(~ str_replace(., "act_", ""))
+
+# Create the full feature importance dataframe
+full_feature_imp_df <- data.frame()
+
+for (feature in response_features) {
+  cat(
+    "\n\n\t\t\t\t\t\t Feature: ", feature, "\n\n"
+  )
+
+  # Create df to store the importance matrix
+  feature_imp_df <- data.frame()
+
+  # Create the out-of-fold predictions column
+  oof_predictions <- numeric(nrow(base_oof_predictions))
+
+  # Determine parameter set based on feature type
+  parameters <- if (feature %in% meta_parameters$Feature) {
+    meta_parameters
+  } else {
+    cat("Feature not found")
+    next
+  }
+
+  # Select the parameters and weights corresponding to the feature
+  selected_parameters <- parameters[parameters$Feature == feature, ]
+
+  if (nrow(selected_parameters) == 0) {
+    cat("No parameters found for feature: ", feature, "\n")
+    next
+  }
+
+  # Print selected parameters
+  cat("\n Selected Parameters:\n")
+  print(selected_parameters)
+
+  y <- ifelse(feature %in% cat_features, as.integer, as.numeric)(label_data[[feature]])
+  cat("\n Y: ")
+  print(head(y))
+
+  # Fold-wise training
+  for (fold_index in seq_along(folds)) {
+    cat(
+      "\n\t\t\t\t Fold: ", fold_index, "\n"
+    )
+    train_indices <- setdiff(seq_len(nrow(meta_input_data)), folds[[fold_index]])
+    valid_indices <- folds[[fold_index]]
+
+    train_data <- xgb.DMatrix(data = as.matrix(meta_input_data[train_indices, ]), label = y[train_indices])
+    cat("\n Train Data: \n")
+    print(head(y[train_indices], 10))
+
+    valid_data <- xgb.DMatrix(data = as.matrix(meta_input_data[valid_indices, ]), label = y[valid_indices])
+
+    if (feature %in% cat_features) {
+      selected_base <- read.csv(
+        paste0(
+          input_path,
+          "/Parameters/Hyperparameters/",
+          cancer_type,
+          "/base_cat_hyperparams.csv"
+        )
+      )
+        selected_base_params <- selected_base[selected_base$Feature == feature, ]
+      selected_ref <- as.numeric(
+        selected_base_params[c(
+          "Weight_loss",
+          "Weight_normal",
+          "Weight_gain"
+        )]
+      )
+      
+      weights <- as.numeric(feature_digit_function(factor(y[train_indices], levels = c(0, 1, 2)), selected_ref))
+      setinfo(train_data, "weight", weights)
+
+      cat(
+        "\n\n Weight Loss: ", selected_ref[1], "\n",
+        "Weight Normal: ", selected_ref[2], "\n",
+        "Weight Gain: ", selected_ref[3], "\n\n"
+      )
+
+      cat("\n Weights: \n")
+      print(head(weights, 10))
+      cat("\n\n")
+    }
+
+    # Adjust weights for categorical features
+
+    # Train model
+    params_list <- list(
+      data = train_data,
+      nrounds = selected_parameters$Trees,
+      objective = ifelse(feature %in% cat_features, "multi:softmax", "reg:squarederror"),
+      eval_metric = ifelse(feature %in% cat_features, "mlogloss", "rmse"),
+      max_depth = selected_parameters$Max_depth,
+      min_child_weight = selected_parameters$Child_weight,
+      eta = selected_parameters$Eta,
+      gamma = selected_parameters$Gamma,
+      watchlist = list(eval = valid_data),
+      print_every_n = print_every
+    )
+
+    # Only add num_class for categorical features
+    if (feature %in% cat_features) {
+      params_list$num_class <- 3
+    }
+
+    xgb_model <- do.call(xgb.train, params_list)
+
+    # Store OOF predictions
+    oof_predictions[valid_indices] <- predict(xgb_model, valid_data)
+    cat(
+      "\n OOF Predictions: \n"
+    )
+    print(head(oof_predictions, 10))
+
+    # Create the feature importance matrix
+    importance_matrix <- xgb.importance(
+      feature_names = colnames(meta_input_data),
+      model = xgb_model
+    )
+
+    # Store the importance matrix in the dataframe
+    feature_imp_df <- rbind(feature_imp_df, as.data.frame(importance_matrix))
+  }
+
+  # Store the predictions in the corresponding column
+  meta_oof_predictions[[paste0("pred_", feature)]] <- oof_predictions
+
+  # get the feature imp df
+  imp <- feat_imp(imp_df = feature_imp_df, top_gene_num = 5, basis = "Gain", Type = "Meta")
+
+  top_genes <- imp$top_genes
+
+  full_feature_imp_df <- rbind(
+    full_feature_imp_df,
+    imp$feature_imp_df %>%
+      mutate(Target = feature)
+  ) %>%
+    dplyr::arrange(desc(Gain))
+}
+
+cat("Training of the meta models complete")
+
+# Save the out-of-fold predictions
+write.csv(
+  meta_oof_predictions,
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Predictions/Full_meta_predictions.csv"
+  )
+)
+
+# Save the feature importance df
+write.csv(
+  full_feature_imp_df,
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Feature_importance/Full_meta_feature_importance.csv"
+  )
+)
+```
+
+General Meta_layer Feature Importance Plot
+```{r}
+# import the feature importance df
+full_feature_imp_df <- read.csv(
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Feature_importance/Full_meta_feature_importance.csv"
+  ),
+  row.names = 1
+)
+
+# Heatmap of the top features
+top_learners_matrix <- full_feature_imp_df %>%
+  mutate(Gain = round(Gain, 3)) %>% 
+  dplyr::select(Feature, Target, Gain) %>%
+  pivot_wider(names_from = Feature, values_from = Gain) %>%
+  replace(is.na(.), 0) 
+
+top_learners_long <- top_learners_matrix %>% 
+  # reformat from matrix into a df with 3 columns (Feature, Target, Gain)
+  pivot_longer(!Target, names_to = "Feature", values_to = "Gain") %>% 
+  mutate(Target = factor(Target, levels = response_features_order),
+         Feature = factor(Feature, levels = response_features_order))
+
+# Save the top genes
+write.csv(
+  top_learners_long,
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Feature_importance/Top_baselearners_complete.csv"
+  )
+)
+  
+# Calculate the Uniform Gain Threshold (1/number of base learners)
+midpoint <- round(1 / length(unique(top_learners_long$Target)),3)
+
+heatmap_plot <- ggplot(top_learners_long, aes(x = Feature, y = Target, fill = Gain)) +
+  geom_tile(colour = "black", lwd = 0.3) +
+  scale_fill_gradient2(low = "white", mid = "white", high = "#D21717", midpoint = midpoint) +
+  labs(title = "",
+       x = "Base Learner",
+       y = "Meta Learner",
+       caption = paste0("Uniform Gain Threshold: ",midpoint),
+       subtitle = paste0("Cancer type: ", cancer_type)) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black", size = 10),
+    axis.text.y = element_text(angle = 0, hjust = 1, color = "black", size = 11),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    plot.subtitle = element_text( size = 12),
+    legend.title = element_text(size = 15, face = "bold"),
+    legend.position = "top",
+    axis.title = element_text(size = 17, face = "bold"),
+    plot.caption = element_text(size = 11, face = "italic")
+  )
+
+print(heatmap_plot)
+
+# Save the heatmap
+ggplot2::ggsave(
+  filename = paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Plots/Feature_importance/Meta_Features_Heatmap.pdf"
+  ),
+  plot = heatmap_plot,
+  width = 9,
+  height = 10
+)
+
+```
+
+Create the arc diagram of the feature inter-dependencies
+```{r}
+# Get the feature order
+all_feature_order <- c("1p", "1q", "2p", "2q", "3p", "3q", "4p", "4q", "5p", "5q", "6p", "6q", "7p", "7q", "8p", "8q", "9p", "9q", "10p", "10q", "11p", "11q", "12p", "12q", "13q", "14q", "15q", "16p", "16q", "17p", "17q", "18p", "18q", "19p", "19q", "20p", "20q", "21q", "22q", "ai1", "lst1", "loh_hrd", "peri_1", "peri_2", "peri_3", "peri_4", "peri_5", "peri_7", "peri_8", "peri_9", "peri_10", "peri_16_1", "peri_16_2", "peri_17", "peri_20", "peri_22_3")
+
+# Remove the features that don't show in the Cancer type
+feature_order <- all_feature_order[all_feature_order %in% response_features]
+
+
+# Transform your adjacency matrix (or similar structure) into a long format if not already
+connect <- full_feature_imp_df %>%
+  mutate(Gain = (Gain - min(Gain)) / (max(Gain) - min(Gain))) %>%
+  filter(Gain > 0.025) %>%  # Assuming 'Gain' indicates the strength or existence of a connection
+  dplyr::select(from = Feature, to = Target, value = Gain)
+
+# Create a graph object with igraph
+mygraph <- graph_from_data_frame(connect, directed = FALSE)
+
+# Find community if necessary (optional, depends on need to color nodes by community)
+com <- cluster_walktrap(mygraph)
+membership <- membership(com)
+
+# Prepare data for plotting
+coauth <- data.frame(name = feature_order) 
+
+# Update graph with filtered data
+mygraph <- graph_from_data_frame(connect, vertices = coauth, directed = FALSE)
+
+# Prepare colors
+# mycolor <- viridis_pal(option = "D")(length(unique(coauth$grp)))
+
+# Make the graph
+interdependencies <- ggraph(mygraph, layout = "linear") +
+  geom_edge_arc(aes(edge_alpha = value, edge_colour = value), edge_width = 0.3) +
+  geom_node_point(alpha = 0.5) +
+  labs(title = "Inter-Model Dependencies",
+       x = "Feature Model") +
+  scale_edge_color_gradient(low = "grey54", high = "#7F000D") +
+  geom_node_text(aes(label = name), repel = FALSE, angle = -45 , nudge_y = -1.0, size = 2) +
+  theme_classic() +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 11),
+        panel.border = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(),
+        axis.title.x = element_text(size = 8)) +
+  expand_limits(x = c(-0.5, 0.5), y = c(-1.5, 1)
+                )
+
+print(interdependencies)
+
+# Save the plot
+ggsave(
+  plot = interdependencies,
+  filename = paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Plots/Feature_importance/Meta_Feature_Interdependency_arcplt.pdf"
+  ),
+  width = 12,
+  height = 5
+)
+```
+
+Reconvert the data into the original scale
+```{r}
+# Upload the meta predictions
+meta_oof_predictions <- read.csv(
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Predictions/Full_meta_predictions.csv"
+  ),
+  row.names = 1
+)
+
+# Upload the base predictions
+base_oof_predictions <- read.csv(
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Predictions/Full_base_predictions.csv"
+  ),
+  row.names = 1
+)
+
+# columns to not convert
+regression_columns <- c(
+  paste("pred_", reg_features, sep = ""),
+  paste("act_", reg_features, sep = "")
+)
+
+# Reconvert the data into the original scale
+final_base_oof_predictions <- base_oof_predictions %>%
+  mutate(across(.cols = -any_of(regression_columns), ~ replace(., . == 0, -1))) %>%
+  mutate(across(.cols = -any_of(regression_columns), ~ replace(., . == 1, 0))) %>%
+  mutate(across(.cols = -any_of(regression_columns), ~ replace(., . == 2, 1)))
+
+final_meta_oof_predictions <- meta_oof_predictions %>%
+  mutate_all(as.numeric) %>%
+  mutate(across(.cols = -any_of(regression_columns), ~ replace(., . == 0, -1))) %>%
+  mutate(across(.cols = -any_of(regression_columns), ~ replace(., . == 1, 0))) %>%
+  mutate(across(.cols = -any_of(regression_columns), ~ replace(., . == 2, 1)))
+```
+
+Assess the performance of the models
+```{r}
+# Dataframe to store the metrics for the classification models
+Class_metrics_df <- data.frame(
+  Feature = character(),
+  Class = character(),
+  Type = character(),
+  Metric = character(),
+  Value = numeric()
+)
+
+# Dataframe to store the general metrics for the models
+Cat_general_metrics <- data.frame(
+  Feature = character(),
+  Type = character(),
+  Accuracy = numeric(),
+  Kappa = numeric(),
+  AccuracyNull = numeric(),
+  AccuracyPValue = numeric()
+)
+
+# Dataframe to store the metrics for the regression models
+Reg_general_metrics <- data.frame(
+  Feature = character(),
+  Type = character(),
+  RMSE = numeric(),
+  MAE = numeric()
+)
+
+# Assess the performance of each individual model
+for (feature in response_features) {
+  predicted <- paste0("pred_", feature)
+  labelled <- paste0("act_", feature)
+
+  if (feature %in% cat_features) { # Categorical features
+    # Use Caret package to get the performance stats
+    # Get the confusion matrix for the base and meta models
+    cm_base <- calculate_confusion_matrix(final_base_oof_predictions, predicted, labelled)
+    cm_meta <- calculate_confusion_matrix(final_meta_oof_predictions, predicted, labelled)
+
+    # Create the base metrics dataframe
+    cat_base_metrics <- as.data.frame(cm_base$overall) %>%
+      t() %>%
+      as.data.frame() %>%
+      mutate(Feature = feature, Type = "Base") %>%
+      dplyr::select(Feature, Type, everything())
+             
+    # Create the meta metrics dataframe
+    cat_meta_metrics <- as.data.frame(cm_meta$overall) %>%
+      t() %>%
+      as.data.frame() %>%
+      mutate(Feature = feature, Type = "Meta") %>%
+      dplyr::select(Feature, Type, everything())
+    
+    # Update the general categorical metrics dataframe
+    Cat_general_metrics <- rbind(
+      Cat_general_metrics,
+      cat_base_metrics,
+      cat_meta_metrics
+    )
+
+    # Create the TPR confusion matrix and the heatmap
+    tpr_mtrx_base <- tpr_confusion_matrix(cm_base, feature, "Base")
+    tpr_mtrx_meta <- tpr_confusion_matrix(cm_meta, feature, "Meta")
+
+    # Create the confusion matrix stats
+    confusion_matrix_data <- rbind(
+      create_confusion_matrix_data(cm_meta, "Meta"),
+      create_confusion_matrix_data(cm_base, "Base")
+    ) %>%
+      mutate(Feature = feature) %>%
+      dplyr::select(Feature, everything())
+
+    # Update the class metrics dataframe
+    Class_metrics_df <- rbind(Class_metrics_df, confusion_matrix_data)
+
+    # Create the plot for the stats above
+    metrics_plot <- confusion_stat_plot(confusion_matrix_data)
+  } else if (feature %in% reg_features) { # Regression models
+    # evaluate the performance of the regression models with caret
+
+    # Calculate the RMSE for the regression models
+    rmse_base <- caret::RMSE(
+      final_base_oof_predictions[[predicted]],
+      final_base_oof_predictions[[labelled]]
+    )
+    rmse_meta <- caret::RMSE(
+      final_meta_oof_predictions[[predicted]],
+      final_meta_oof_predictions[[labelled]]
+    )
+
+    # Calculate the MAE for the regression models
+    mae_base <- caret::MAE(
+      final_base_oof_predictions[[predicted]],
+      final_base_oof_predictions[[labelled]]
+    )
+    mae_meta <- caret::MAE(
+      final_meta_oof_predictions[[predicted]],
+      final_meta_oof_predictions[[labelled]]
+    )
+
+    # Calculate the R2 for the regression models
+    r2_base <- caret::R2(
+      final_base_oof_predictions[[predicted]],
+      final_base_oof_predictions[[labelled]]
+    ) %>% round(., 2)
+
+    r2_meta <- caret::R2(
+      final_meta_oof_predictions[[predicted]],
+      final_meta_oof_predictions[[labelled]]
+    ) %>% round(., 2)
+
+
+    # Update the general metrics dataframe
+    Reg_general_metrics <- rbind(
+      Reg_general_metrics,
+      data.frame(
+        Feature = feature,
+        Type = "Base",
+        RMSE = rmse_base,
+        MAE = mae_base,
+        R_squared = r2_base
+      ),
+      data.frame(
+        Feature = feature,
+        Type = "Meta",
+        RMSE = rmse_meta,
+        MAE = mae_meta,
+        R_squared = r2_meta
+      )
+    )
+
+    # Create the actual vs predicted plot 
+    plot_base_reg <- pred_vs_actual_plot(
+      final_base_oof_predictions,
+      feature,
+      "base",
+      "Base model residuals for "
+    )
+
+    plot_meta_reg <- pred_vs_actual_plot(
+      final_meta_oof_predictions,
+      feature,
+      "meta",
+      "Meta model residuals for "
+    )
+  }
+}
+
+# Reset the indices of the dataframes to row number
+Cat_general_metrics <- Cat_general_metrics %>%
+  rownames_to_column("Index") %>%
+  dplyr::select(-Index) %>%
+  distinct() %>%
+  dplyr::select(Feature, Type, Accuracy, Kappa, AccuracyNull, AccuracyPValue)
+
+Reg_general_metrics <- Reg_general_metrics %>%
+  rownames_to_column("Index") %>%
+  dplyr::select(-Index) %>%
+  distinct()
+
+Class_metrics_df <- Class_metrics_df %>%
+  distinct()
+
+# Save the dataframes
+write.csv(
+  Cat_general_metrics,
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Predictions/Gen_cat_metrics.csv"
+  )
+)
+
+write.csv(
+  Reg_general_metrics,
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Predictions/Gen_reg_metrics.csv"
+  
+  )
+)
+
+write.csv(
+  Class_metrics_df,
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Predictions/Gen_cat_class_metrics.csv"
+  )
+)
+```
+
+Create the plot the categorical models in terms of their accuracy
+```{r}
+# Load the categorical metrics
+Cat_general_metrics <- read.csv(
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Predictions/Gen_cat_metrics.csv"
+  ),
+  row.names = 1
+)
+
+# Factorize the Feature column
+Cat_general_metrics$Feature <- factor(Cat_general_metrics$Feature, levels = unique(Cat_general_metrics$Feature))
+
+# Create line plot the categorical features in terms of the Accuracy
+cat_acc_plot <- ggplot(
+  Cat_general_metrics,
+  aes(x = Feature, y = Accuracy, color = Type, group = Type)
+) +
+  geom_line(
+    lwd = 0.75
+  ) +
+  scale_color_manual(values = c("Base" = "#4d63b2", "Meta" = "#D21717")) +
+  labs(
+    title = "Accuracy of the Aneuploidy Learners",
+    x = "Learner",
+    y = "Accuracy",
+    color = "Learner Type",
+    subtitle = paste0(
+      "Cancer type: ",
+      cancer_type)
+  ) +
+  scale_y_continuous(
+    limit = c(ifelse(min(Cat_general_metrics$Accuracy) > 0.25,
+                     min(Cat_general_metrics$Accuracy - 0.2),
+                     0),
+              1),
+    breaks = seq(0, 1, by = 0.1)
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
+    axis.text.y = element_text(size = 11),
+    axis.title = element_text(face = "bold", size = 15),
+    plot.subtitle = element_text(size = 13),
+    plot.title = element_text(hjust = 0.5, size = 18),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 15),
+    panel.border = element_rect(linetype = "solid", color = "black", fill = NA, size = 0.5),
+    panel.grid.major = element_line(color = "grey49", size = 0.2)
+  )
+
+# Save the plot
+ggsave(
+  filename = paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Plots/Predictions/Model_Accuracy_line.pdf"
+  ),
+  plot = cat_acc_plot,
+  width = 14,
+  height = 5
+)
+
+print(cat_acc_plot)
+
+```
+
+Create the plot the regression models in terms of their Rsquared
+```{r}
+# Load the regression metrics
+Reg_general_metrics <- read.csv(
+  paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Results/Predictions/Gen_reg_metrics.csv"
+  
+  ),
+  row.names = 1
+)
+
+
+# Factorize the Feature column
+Reg_general_metrics$Feature <- factor(Reg_general_metrics$Feature, levels = unique(Reg_general_metrics$Feature))
+
+# Create line plot the regression features in terms of the Rsquared
+reg_rsqd_plot <- ggplot(
+  Reg_general_metrics,
+  aes(x = Feature, y = R_squared, color = Type, group = Type)
+) +
+  geom_line(
+    lwd = 0.75
+  ) +
+  scale_color_manual(values = c("Base" = "#4d63b2", "Meta" = "#7F000D")) +
+  labs(
+    title = expression("Pericentromeric and HRD models in terms of R"^2),
+    x = "Learner",
+    y = expression(R^2),
+    color = "Learner Type",
+    subtitle = paste0(
+      "Cancer type: ",
+      cancer_type)
+  )+
+  scale_y_continuous(limit = c(
+    ifelse(min(Reg_general_metrics$R_squared) > 0.25,
+           min(Reg_general_metrics$R_squared - 0.2),
+           0),
+    1),
+    breaks = seq(0, 1, by = 0.1)
+  )+
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),
+    axis.text.y = element_text(size = 11),
+    axis.title = element_text(face = "bold", size = 15),
+    plot.subtitle = element_text(size = 13),
+    plot.title = element_text(hjust = 0.5, size = 18),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 15),
+    panel.border = element_rect(linetype = "solid", color = "black", fill = NA, size = 0.5),
+    panel.grid.major = element_line(color = "grey49", size = 0.2)
+  )
+
+# Save the plot
+ggsave(
+  filename = paste0(
+    output_path,
+    "/",
+    cancer_type,
+    "/Plots/Predictions/Model_Rsquared_line.pdf"
+  ),
+  plot = reg_rsqd_plot,
+  width = 14,
+  height = 5
+)
+
+print(reg_rsqd_plot)
+```
+
+```{r}
+print(paste0("The analysis for ", cancer_type, " is complete."))
+```
+

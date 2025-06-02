@@ -1,0 +1,338 @@
+---
+title: "TCGA_RNA_SIGNATURE_HIERARCHIAL_CLUSTER_METHOD"
+format: html
+editor: visual
+Note: This script is for the creation of the gene signatures using the metagene clustering approach.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+PACKAGES
+
+```{r}
+library(dplyr)
+library(knitr)
+library(tidyverse) 
+library(paletteer)
+library(ggrepel)
+library(ggplot2)
+library(pheatmap)
+library(Hmisc)
+library(dendextend)
+```
+
+REUSABLE FUNCTIONS
+
+```{r}
+extract_element <- function(strings, index) {
+  # Split each string by "." and extract the third element
+  element_list <- sapply(strsplit(strings, "\\."), function(x) x[index])
+  return(element_list)
+}
+
+  inter_coef <- function(x) {
+    # Inter-cluster coefficient calculation
+    x_squared <- x^2
+    non_neg <- x >= 0
+    x * x_squared * non_neg + 1 * x_squared * (!non_neg)
+    }
+```
+
+### 1. COLLECT DATASETS
+
+1.1 LOAD THE RNASEQ DATASETS
+
+```{r}
+# Metadata
+tss_meta <- read.csv("Data/Other/TCGA_meta/tissueSourceSite.tsv", sep = "\t")
+abbrv_meta <- read.csv("Data/Other/TCGA_meta/bcrBatchCode.tsv", sep = "\t")
+
+# Set of Interest TPM data
+full_soi <- read.csv("Data/RNA_Data/TCGA_TPM/TCGA_mRNA_TPM_SOI.csv")
+soi <- full_soi[-1]
+test_set <- soi[0:100,0:100]
+```
+
+1.2 ORGANISE THE DATAFRAMES
+
+```{r}
+
+# Combine the metadata
+meta <- left_join(tss_meta %>% 
+                     select(c("TSS.Code", "Study.Name")) %>% 
+                     distinct() %>% 
+                     sapply(trimws) %>% 
+                     as.data.frame(),
+                   abbrv_meta %>%
+                     select(c("Study.Abbreviation", "Study.Name")) %>% 
+                     distinct()%>% 
+                     sapply(trimws) %>% 
+                     as.data.frame(), 
+                   by = "Study.Name")
+
+```
+
+### 2. CLEAN & PRE-PROCESS THE DATA
+
+2.1 EDIT THE SAMPLE NAMES (COLUMN NAMES) INTO IDS SO AS TO BE ABLE TO IDENTIFY THE PARTICIPANT AND THE CANCER TYPE
+```{r}
+ids <- colnames(test_set)[-1]
+participants <- extract_element(ids, 3)
+condition <- extract_element(ids, 4)
+tissue_type <- extract_element(ids, 2)
+
+column_names <- c("Gene" ,  paste(tissue_type, participants, condition, sep = "."))
+colnames(test_set) <- column_names
+```
+
+
+2,4 REMOVE THE UNVIABLE SAMPLES FROM THE DATA
+```{r}
+# Remove the unwanted sample types from the samples based on the code
+codes_to_use <- c("01","02","03","04","05","08","09")
+viable_soi <- test_set %>%  dplyr::select("Gene" | ends_with(codes_to_use))
+```
+
+2.3 FORMAT THE DF
+```{r}
+# Summarise the duplicate genes by their mean
+log_data <- viable_soi %>% 
+  group_by(Gene) %>%
+  summarise(across(everything(), ~mean(., na.rm = TRUE)))
+
+# Set the Gene column as the rownames
+# and transpose the df so rows become the columns
+final_df <- log_data %>%
+  column_to_rownames(var = "Gene") %>% 
+  t()
+```
+
+
+### 3. PROCESSING
+
+3.1 CORRELATION MATRIX CREATION
+```{r}
+# Calculate the correlation matrix 
+corr_matrix <- cor(final_df) # correlation matrix
+
+# Set the breakpoint where the change in color will occur 
+myBreaks <- c(seq(-1, 0.00, length.out = 100), seq(0.01, 1, length.out = 100))
+myColors <- colorRampPalette(c("blue1", "white","red4"))(length(myBreaks) - 1)
+
+# Create and save the resulting heatmap
+cor_heatmap <- pheatmap(corr_matrix, color = myColors, breaks = myBreaks, border_color = NA)
+ggsave("heatmap.pdf",   
+       plot = cor_heatmap,
+       width = 30,
+       height = 25)
+```
+
+3.2 DISTANCE MATRIX CREATION
+```{r}
+# Create the distance matrix
+dist_matrix <- as.dist(1 - corr_matrix) # dissimilarity matrix
+dist_df <- as.data.frame(as.matrix(dist_matrix)) # dissimilarity df
+
+# Create the resulting distance heatmap
+dist_heatmap <- pheatmap(dist_matrix, border_color = NA)
+```
+
+3.3 DENDROGRAM GENERATION
+```{r}
+# Cluster the Genes using the average distance and
+# extract the dendrogram from the matrix 
+distance.tree <- hclust(dist_matrix, method="average") %>%
+  as.dendrogram()
+
+# Get the different heights that show up in the tree
+# and sort them
+node_heights <- distance.tree %>% 
+  get_nodes_attr("height") %>% 
+  unique() %>% 
+  sort()
+
+# Plot the tree
+distance.tree %>% dendextend::set("labels_cex", 0.4) %>% plot()
+```
+
+3.4 HEIGHT BASED CLUSTERING OPTIMISATION
+```{r}
+# Set the breakpoints for the corr matrix where the change in color will occur 
+newBreaks <- c(seq(-1, 0.00, length.out = 100), seq(0.01, 1, length.out = 100))
+
+# Initialise the df that will contain the coef Score, Node height, Number of groups formed
+cluster_groups_df <- data.frame(Iteration = integer(),
+                                Intra.Score = numeric(),
+                                Inter.Score = numeric(),
+                                Total.Score = numeric(),
+                                Node.Height = numeric(),
+                                Cluster.Number = integer())
+
+# Initialise the scores 
+initial_intra <- length(colnames(final_df))
+initial_inter <- sum(inter_coef(corr_matrix))
+tot_score <- initial_intra - initial_inter
+
+cluster_groups_df <- rbind(
+    cluster_groups_df,
+    data.frame(Iteration = 1,
+               Intra.Score = initial_intra,
+               Inter.Score = initial_inter,
+               Total.Score = tot_score,
+               Node.Height = 0,
+               Cluster.Number = distance.tree %>% nleaves
+               )
+    )
+```
+
+
+```{r}
+for (height in seq(2,length(node_heights)-1,5)){
+  # Select the cut height 
+  cutheight = node_heights[height]
+  print('\n')
+  print(height)
+  
+  # Get the resulting dendrogram
+  clusters <- cutree(distance.tree, h = cutheight)
+
+  # Get the genetic makeup of each cluster
+  cluster_df <- as.data.frame(clusters)%>%
+  rownames_to_column("Gene")
+  
+  # Get the number of groups
+  n_groups <- length(unique(clusters))
+
+  # Add this iteration's cluster information to the expression matrix
+  clustered_xprss <- left_join(log_data,
+                   cluster_df,
+                   by = "Gene") %>% 
+    mutate(n_genes = map_dbl(clusters, 
+                             ~sum(.x == clusters, na.rm = TRUE)
+                             ), # number of genes in the cluster
+           Cluster.Name = ifelse(n_genes == 1, Gene, 
+                                 paste0("Clust.",clusters))) %>% 
+    select(-c("clusters","n_genes"))
+  
+  # Group the expression matrix in terms of the clusters
+  clustered_xprss_grouped <- clustered_xprss %>% 
+    group_by(Cluster.Name) %>%
+    summarise(across(-Gene, ~ mean(., na.rm = TRUE))) 
+  
+  
+  # Intra Cluster Similarity Score (ICSS) Calculation
+  
+  # Find the clusters with more than a single gene occupant
+  filled_clusters <- clustered_xprss_grouped %>% 
+    filter(str_detect(Cluster.Name, "^Clust.")) %>% 
+    pull(Cluster.Name) 
+  
+   # The number of unclustered genes 
+  n_unclust_genes <- n_groups - length(filled_clusters)
+  
+  # Iterate over each cluster to calculate its specific score
+  total_intra_score <- 0
+  
+  # Filter over these individual clusters creating the cluster specific corr matrices and collecting the average coefficient of each 
+  intra_cluster_averages = c()
+  for (clust in filled_clusters){
+    intra_corr <- clustered_xprss %>% 
+      filter(Cluster.Name == clust) %>% 
+      select(-Cluster.Name) %>% 
+      column_to_rownames("Gene") %>% 
+      t() %>% 
+      cor()
+    
+    # Sum positive correlations raised to the power of p
+    positive_contribution <- sum((intra_corr > 0) * 
+                             intra_corr^2)
+    
+    # Sum negative correlations raised to the power of q
+    negative_contribution <- sum((intra_corr < 0) * 
+                             abs(intra_corr)^2)
+    
+    # Get the number of gene pairs
+    n_pairs <- length(intra_corr)
+    
+    # Calculate cluster score and adjust by the number of pairs
+    cluster_score <- (positive_contribution - 1 * negative_contribution) / n_pairs
+    
+    # Add to total score
+    total_intra_score <- total_intra_score + cluster_score
+  }
+  
+  # Add the score of the unclustered genes
+  total_intra_score <- total_intra_score + n_unclust_genes
+  
+  # Average the score by the number of clusters
+  ICSS <- total_intra_score / n_groups
+  
+ 
+  
+  
+  # # Inter-Cluster Dissimilarity Score (ICDS)
+  # 
+  # # Redefine the correlation matrix in terms of the clusters
+  # clustered_corr <- clustered_xprss_grouped %>%
+  #   column_to_rownames("Cluster.Name") %>%
+  #   t() %>% 
+  #   cor(., method = "pearson")
+  # 
+  # # Calculate the Inter-CCS
+  # ICDS <- sum(inter_coef(clustered_corr))
+  # 
+  # 
+  # # Total Cluster Correlation Score (TCCS)
+  # 
+  # TCCS <- ICSS + ICDS
+  # 
+  # 
+  # # Collect the Scores from the different iterations 
+  # 
+  # cluster_groups_df <- rbind(
+  #   cluster_groups_df,
+  #   data.frame(Iteration = height,
+  #              Intra.Score = ICSS,
+  #              Inter.Score = ICDS,
+  #              Total.Score = TCCS,
+  #              Node.Height = cutheight,
+  #              Cluster.Number = n_groups
+  #              )
+  #   )
+  
+  # 
+  # # Plot the resulting tree
+  # plot(color_branches(distance.tree, h=cutheight),
+  #      leaflab="none", 
+  #      col = paletteer_c("grDevices::Terrain 2", 
+  #                        length(unique(clusters))), 
+  #      main = " Hierarchical clustering (average method)"
+  #      )
+  # abline(h = cutheight, col = "red", lwd = 0.75)
+  # mtext(paste0("Cut Height of ",round(cutheight, 2),
+  #              ", yeilding ", 
+  #              n_clusters, 
+  #              " clusters"
+  #              ), 
+  #       side = 3, 
+  #       line = 0.5, 
+  #       cex = 0.8, 
+  #       adj = 0.5
+  #       )
+  # 
+  # clust_heatmap <- pheatmap(clustered_corr, 
+  #                           breaks = newBreaks ,
+  #                           color = myColors,
+  #                           border_color = NA)
+  # 
+  # # # Save the heatmaps
+  # # ggsave(paste0("Plots/clsutered_heatmap", height, ".png"),
+  # #      plot = clust_heatmap,
+  # #      width = 30,
+  # #      height = 25)
+}
+```
+
+

@@ -1,0 +1,579 @@
+---
+title: "TCGA_COUNT_TUMOUR_NORMAL_DGEA_ALLGENES"
+output: html_document
+date: "2024-03-18"
+Note: This script is for the anlysis of the Differential Gene expression between the cancerous and non-cancerous TCGA Expected count data using all genes.
+---
+
+CONTENTS:
+
+1\. SETUP
+
+1.1. ROOT DIRECTORY SETTINGS
+
+1.2. PACKAGES
+
+1.3. LOCATION SETTINGS
+
+1.4. RESUABLE FUNCTIONS
+
+2\. DATA COLLECTION
+
+2.1. LOADING THE DATA
+
+3\. CLEANING AND PRE-PROCESSING
+
+3.1. RE-TRANSFORMATION OF THE COUNT DATA
+
+3.2. GENE ID TO NAME CONVERSION
+
+3.3. SAMPLE TO ID CONVERSION
+
+3.4. GENE & SAMPLE TRIMMING
+
+4\. PROCESSING
+
+4.1. DGE MODELLING
+
+4.2. CREATE THE SAMPLE FACTORS
+
+4.3. TRIM LOW COUNT GENES
+
+4.4. CREATE THE LINEAR MODEL
+
+5\. COMPLETE RESULTS
+
+5.1. PRODUCE THE RESULTS TABLE
+
+5.2. CREATE THE VOLCANO PLOT OF THE MAIN RESULTS
+
+6\. TISSUE-SPECIFIC ANALYSIS
+
+6.1. CLEANING, PRE-PROCESSING, PROCESSING AND RESULTS
+
+6.2. VOLCANO PLOTS
+
+1.  SETUP
+
+1.1. SETUP
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "")
+```
+
+1.2. LOAD THE PACKAGES
+
+```{r}
+library(dplyr)
+library(knitr)
+library(tidyverse) 
+library(edgeR)
+library(limma)
+library(EnhancedVolcano)
+library(ggrepel)
+library(data.table)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+```
+
+1.3. LOCATION FOR DGE PLOTS
+
+```{r}
+plt_loc <- ""
+data_loc <- ""
+```
+
+1.4. REUSABLE FUNCTIONS
+
+```{r}
+extract_element <- function(strings, index) {
+  # Split each string by "." and extract the third element
+  element_list <- sapply(strsplit(strings, "\\."), function(x) x[index])
+  return(element_list)
+}
+```
+
+2.  COLLECTION
+
+2.1. LOAD THE DATA
+
+```{r}
+# Using the TCGA PanCan RSEM Expected Counts dataset created with the TCGA_Raw_data_Preprocessing.py script
+original <- read.csv("tcga_gene_expected_count.csv")
+order_data <- original[,order(colnames(original))]
+
+# Cancer/Tissue Metadata
+tss_meta <- read.csv("tissueSourceSite.tsv", sep = "\t")
+abbrv_meta <- read.csv("bcrBatchCode.tsv", sep = "\t")
+meta <- left_join(tss_meta %>%
+                    dplyr::select(c("TSS.Code", "Study.Name")) %>%
+                    distinct() %>%
+                    sapply(trimws) %>%
+                    as.data.frame(),
+                  abbrv_meta %>%
+                     dplyr::select(c("Study.Abbreviation", "Study.Name")) %>%
+                    distinct()%>%
+                    sapply(trimws) %>%
+                    as.data.frame(),
+                  by = "Study.Name")
+
+# Gene Metadata
+gene_ids <- read.delim("TCGA_PanCan_TPM_Gene_Annotations.txt")
+
+# Load the TPM SOI dataset
+soi <- read.csv("TCGA_mRNA_TPM_SOI.csv")
+
+# extract the SOI genes
+soi_genes <-soi[,2]
+```
+
+3.  CLEANING AND PRE-PROCESSING
+
+3.1. UN-TRANSFORM THE DATA FROM THE y = Log2(x+1) VALUES TO THE COUNTS USING THE FOLLOWING FORUMLA: x = 2^y^−1.
+
+```{r}
+transformed_data <- order_data
+rownames(transformed_data) <- NULL
+
+
+untransform <- function(x) {#Function to convert the log transformed counts back into original counts
+  return(ceiling((2^x)-1))
+}
+
+count_data <- transformed_data %>%
+  mutate_at(vars(-1), untransform)
+```
+
+3.2. CONVERT THE GENE IDS INTO GENE NAMES
+
+```{r}
+counts_data <- right_join(gene_ids %>% 
+                    dplyr::select(c("id", "gene")) %>% 
+                    sapply(trimws) %>% 
+                    as.data.frame(),
+                  count_data,
+                  by = c("id" = "sample")) %>% 
+  dplyr::select(-"id")
+
+counts_data <- counts_data %>%
+  mutate(gene = trimws(gene))
+  
+```
+
+3.3. EDIT THE SAMPLES (COLUMN NAMES) INTO IDS SO AS TO BE ABLE TO IDENTIFY THE PARTICIPANT, CONDITION AND CANCER TYPE
+
+```{r}
+ids <- colnames(counts_data)[-1]
+participants <- extract_element(ids, 3)
+condition <- extract_element(ids, 4)
+tissue_type <- extract_element(ids, 2)
+
+column_names <- c("Genes" ,  paste(tissue_type, participants, condition, sep = "."))
+colnames(counts_data) <- column_names
+
+# Convert data to a data.table for faster processing during the grouping of the duplicate genes
+setDT(counts_data)  
+
+# Combine duplicate genes together using the median of the expression
+grouped <- counts_data[, lapply(.SD, function(x) if (length(x) > 1) median(x, na.rm = TRUE) else x), by = Genes, .SDcols = -"Genes"]
+
+# Edit ids so as to be able to identify the condition
+# Reset the row names to the Gene names
+grouped_data <- as.data.frame(grouped)
+data <- distinct(grouped_data) %>% 
+  column_to_rownames(var = "Genes") 
+
+# Remove the unwanted sample types from the samples based on the code
+codes_to_use <- c("01","02","03","04","05","08","09","10","11","12","14","40")
+samples_to_use <- data %>%  dplyr::select(ends_with(codes_to_use))
+
+# Map the codes by health status (cancer <= 9 < Normal)
+mapped_data <- samples_to_use
+new_column_names <- colnames(samples_to_use)
+new_column_names <- ifelse(as.integer(substr(new_column_names, nchar(new_column_names) - 1, nchar(new_column_names))) > 9,
+                           paste0(substr(new_column_names, 1, nchar(new_column_names) - 2), "N"),
+                           paste0(substr(new_column_names, 1, nchar(new_column_names) - 2), "C"))
+
+prefixes <- substr(new_column_names,1,2)
+abbrvs <- meta$Study.Abbreviation[match(prefixes,meta$TSS.Code)]
+column_names_prefixes <- paste0(abbrvs, substr(new_column_names, 3, nchar(new_column_names)))
+colnames(mapped_data) <- column_names_prefixes
+```
+
+3.4. REMOVAL OF THE UNDESIRABLE GENE & SAMPLES: GENES THAT LACK EXPRESSION COUNTS AND SAMPLES THAT ARE NOT PART OF A HEALTHY/CANCEROUS PAIR.
+
+```{r}
+# Remove samples (cols) with 0 values throughout
+cols_zeros <- which(apply(mapped_data, 2, function(x) all(x == 0)))
+if (length(cols_zeros) > 0) {
+  mapped_data_complete <- mapped_data[, -cols_zeros]
+} else {
+  mapped_data_complete <- mapped_data
+}
+
+# Get unique participants
+unique_pairs <- unique(participants)
+
+# List of participants with healthy/cancer paired samples
+selected_columns <- c()
+
+# Loop through each participant
+for (pair in unique_pairs) {
+  # Find the participants with healthy/cancer sample pairings
+  pairedup <-paste0(".", pair, ".")
+  columns_with_pair <- grep(pairedup, colnames(mapped_data_complete))
+  matching_columns <- colnames(mapped_data_complete)[columns_with_pair]
+  if (length(matching_columns) > 1 && any(grepl("\\.N$", matching_columns)) && any(grepl("\\.C$",matching_columns))) {
+    # Add the found participants to the list
+    selected_columns <- c(selected_columns, matching_columns)
+  }
+}
+
+# Filter the data on the list of participants with healthy/cancer paired samples
+subset_mapped <- mapped_data_complete[, selected_columns]
+
+```
+
+4.  PROCESSING
+
+4.1. DGE MODELLING: DEFINE THE MATRIX, CREATE ITS DGE OBJECT AND GET THE NORMALISATION FACTORS
+
+```{r}
+# convert df to matrix 
+ mapped_matrix <- subset_mapped %>% as.matrix()
+
+d0 <- DGEList(mapped_matrix, group = extract_element(colnames(mapped_matrix), 3))
+print(paste("The size of the counts dataframe has been reduced from", 
+            dim(counts_data)[1], "x", dim(counts_data)[2]," to ", 
+            dim(d0)[1], "x", dim(d0)[2]))
+
+# Calculate the normalisation factor 
+d0 <- calcNormFactors(d0, method = "TMM")
+```
+
+4.2. CREATE THE SAMPLE FACTORS
+
+IMPORTANT: The order of the condition factor will determine how the logFCs are calculated, with the first level representing the reference (denominator) which in this case should be the healthy condition.
+
+```{r}
+participants <- extract_element(colnames(mapped_matrix), 2)
+condition <- extract_element(colnames(mapped_matrix), 3)
+tissue_type <- extract_element(colnames(mapped_matrix), 1)
+
+participants <- factor(participants)
+tissue_type <- factor(tissue_type)
+condition <- factor(condition, levels=c("N","C"))
+```
+
+4.3. TRIM LOW COUNT GENES
+
+```{r}
+# Remove low count genes, those with a count below 10
+keep<-filterByExpr(d0,group = condition, min.count = 10)
+d0<-d0[keep,,keep.lib.size=FALSE]
+
+print(paste("The size of the dataframe is now", 
+            dim(d0)[1], "x", dim(d0)[2]))
+```
+
+4.4. CREATE THE LINEAR MODEL
+
+```{r}
+# Set the unique participants and the condition as the main effects.
+mm <- model.matrix(~ participants + condition)
+```
+
+```{r}
+# Apply voom() to transfrom the data so that it is suitable for linear modelling.
+y <- voom(d0, mm, plot = T)
+
+# Fit the linear model
+fit <- lmFit(y, mm)
+
+# smooth the standard errors
+fit2 <- eBayes(fit)
+```
+
+5.  COMPLETE RESULTS
+
+5.1. PRODUCE THE RESULTS TABLE
+
+Get the table of all the genes and their fold changes and significance
+
+```{r}
+express_table <- topTable(fit2, coef="conditionC", sort.by = "P", n = Inf)
+
+write.csv(express_table, 
+          paste0(data_loc, "DGEA_ALLGENES_ALLTISSUES_expression_table.csv"),
+          row.names=TRUE
+          )
+```
+
+5.2. CREATE THE VOLCANO PLOT OF THE MAIN RESULTS
+
+Plot the volcano plot highlighting the GOIs
+
+```{r}
+# Read the expression table
+express_table <- read.csv(
+  paste0(data_loc, "DGEA_ALLGENES_ALLTISSUES_expression_table.csv"),
+  row.names = 1)
+
+# Create column for gene in GOI
+express_table <- express_table %>%
+  mutate(Gene = ifelse(rownames(express_table) %in% soi_genes, TRUE, FALSE)) %>% 
+  dplyr::arrange(Gene)
+
+# Create the key values for the GOIs
+keyvals1 <- ifelse(
+    rownames(express_table) %in% soi_genes, '#D21717',
+        '#4d63b2') 
+  keyvals1[is.na(keyvals1)] <- 'black'
+  names(keyvals1)[keyvals1 == '#D21717'] <- 'Gene of Interest'
+  names(keyvals1)[keyvals1 == '#4d63b2'] <- 'Background Gene'
+  
+# Create the volcano plot
+usable_volcano <- EnhancedVolcano(express_table,
+                lab = rownames(express_table),
+                x = "logFC",
+                y = "P.Value",
+                title = "",
+                subtitle = "",
+                caption = "",
+                selectLab = soi_genes,
+                colCustom = keyvals1,
+                pointSize = c(ifelse(rownames(express_table) %in% soi_genes, 4.5, 1.3)),
+                xlim = c(min(express_table %>%
+                               filter(rownames(express_table) %in% soi_genes) %>%
+                               pull(logFC)),
+                         max(express_table %>%
+                      filter(rownames(express_table) %in% soi_genes) %>%
+                      pull(logFC))),
+                ylim = c(0,
+                         -log10(min(express_table %>%
+                               filter(rownames(express_table) %in% soi_genes) %>%
+                               pull(P.Value)))),
+                drawConnectors = TRUE,
+                widthConnectors = 0.9,
+                colAlpha = 1,
+                pCutoff = 0.01,
+                FCcutoff = 1,
+                labSize = 10,
+                axisLabSize = 27,
+                legendLabSize = 26,
+                max.overlaps = 5,
+                min.segment.length = 2.5)
+usable_volcano
+
+pdf(paste0(plt_loc,"DGEA_VOLCANO_COMPLETE.pdf"),
+    height = 11, width = 13)
+usable_volcano
+dev.off()
+
+```
+
+6.  TISSUE-SPECIFIC ANALYSIS
+
+6.1. CLEANING, PRE-PROCESSING, PROCESSING AND RESULTS OF THE TISSUE SPECIFIC ANALYSIS
+
+Loop over the distinct tissue/cancer types and perform the DGE
+
+```{r}
+
+full_expression_table <- data.frame()
+
+distinct_tissue_types <- unique(extract_element(colnames(subset_mapped), 1))
+
+plotlist <- list()
+
+for (type in distinct_tissue_types) {
+  type_cols <- grep(paste0("^", type), colnames(subset_mapped), value = TRUE)
+  specific_data <- subset_mapped %>% dplyr::select(all_of(type_cols))
+
+  col_number <- ncol(specific_data)
+  if (col_number < 2) {
+    next
+  }
+
+  # convert df to matrix
+  specific_matrix <- specific_data %>% as.matrix()
+
+  specific_d <- DGEList(specific_matrix, group = extract_element(colnames(specific_matrix), 3))
+
+  # Calculate the normalisation factor
+  specific_d <- calcNormFactors(specific_d, method = "TMM")
+
+  # Create a factor for the variables
+  participants <- extract_element(colnames(specific_matrix), 2)
+  condition <- extract_element(colnames(specific_matrix), 3)
+  participants <- factor(participants)
+  condition <- factor(condition, levels=c("N","C"))
+
+  # Remove low count genes, those with a count below 10
+  print(paste("The size of the ", type, " dataframe was", dim(specific_d)[1], "x", dim(specific_d)[2]))
+  keep <- filterByExpr(specific_d, group = condition, min.count = 10)
+  specific_d <- specific_d[keep,, keep.lib.size = FALSE]
+  print(paste("The size of the ", type, " dataframe is now", dim(specific_d)[1], "x", dim(specific_d)[2]))
+
+  plotMDS(specific_d, pch = 1, col = ifelse(condition == "C", "red", "blue"), top = 25)
+
+  # Set the unique participants and the condition as the main effects.
+  specific_mm <- model.matrix(~ participants + condition)
+
+  # Apply voom() to transform the data so that it is suitable for linear modelling.
+  specific_y <- voom(specific_d, specific_mm, plot = FALSE)
+
+  # Fit the linear model
+  specific_fit <- lmFit(specific_y, specific_mm)
+
+  # smooth the standard errors
+  specific_smoothed <- eBayes(specific_fit)
+
+  specific_express_table <- topTable(specific_smoothed, coef="conditionC", sort.by = "P", n = Inf) %>% 
+    dplyr::select(c("logFC", "AveExpr", "P.Value", "adj.P.Val", "B"))
+  specific_express_table$Tissue <- type
+
+  # Extract row names
+  row_names <- rownames(specific_express_table)
+
+  # Add row names as a new column to the data frame and move it to the first position
+  specific_express_table <- specific_express_table %>%
+    mutate(Genes = row_names) %>%
+    dplyr::select(Genes, everything())
+
+  # Add the current DGE table to the full table
+  full_expression_table <- rbind(full_expression_table, specific_express_table)
+
+  keyvals <- ifelse(
+    specific_express_table$Genes %in% soi_genes, 'red2', '#8B8B83')
+  keyvals[is.na(keyvals)] <- 'black'
+  names(keyvals)[keyvals == 'red2'] <- 'Gene of Interest'
+  names(keyvals)[keyvals == '#8B8B83'] <- 'Other'
+  
+  
+  xmini <- min(specific_express_table %>%
+                filter(specific_express_table$Genes %in% soi_genes) %>%
+                pull(logFC))
+  
+  xmaxi <- max(specific_express_table %>%
+                filter(specific_express_table$Genes %in% soi_genes) %>%
+                pull(logFC))
+  
+  ymaxi <- -log10(min(specific_express_table %>%
+                filter(specific_express_table$Genes %in% soi_genes) %>%
+                pull(logFC)))
+
+  specific_volcano <- EnhancedVolcano(specific_express_table,
+                                       lab = specific_express_table$Genes,
+                                       x = "logFC",
+                                       y = "P.Value",
+                                       title = "TCGA Differential Gene Expression",
+                                       subtitle = paste0(type, " Subset"),
+                                       selectLab = soi_genes,
+                                       colCustom = keyvals,
+                                       pointSize = c(ifelse(specific_express_table$Genes %in% soi_genes, 3, 1)),
+                                       xlim = c(xmini-2, xmaxi+2),
+                                       ylim = c(0,ymaxi + 10/ymaxi),
+                                       drawConnectors = TRUE,
+                                       widthConnectors = 0.2,
+                                       colAlpha = 0.65,
+                                       pCutoff = 0.01,
+                                       FCcutoff = 1,
+                                       labSize = 5,
+                                       max.overlaps = 25,
+                                       min.segment.length = 0.1) 
+
+  pdf(paste0(plt_loc, "DGEA_VOLCANO_", type, ".pdf"))
+  print(specific_volcano)  # Print the plot to the PDF
+  dev.off()  # Close the PDF device
+
+  name <- paste0(type, "_volcano")
+  assign(name, specific_volcano)
+}
+
+
+write.csv(full_expression_table, 
+          paste0(data_loc, "DGEA_ALLGENES_BYTISSUE_XPRSS_TBL.csv"),
+                 row.names=TRUE
+          )
+```
+
+6.2 VOLCANO PLOTS
+
+Create the volcano plots for the group of tissues that are of most interest
+
+```{r}
+# Load the expression table
+full_expression_table <- read.csv("DGEA_ALLGENES_BYTISSUE_XPRSS_TBL.csv",
+                                  row.names = 1)
+
+# Select the tumour types to be used
+usable_tissues <- c("BRCA", "HNSC", "LUSC", "LUAD")
+
+# Filter the expression table to only include the usable tissues
+usable_tissues_expression <- full_expression_table %>%
+  filter(Tissue %in% usable_tissues)
+
+# Map the Tissue values to the Study.Name values
+usable_tissues_expression <- left_join(usable_tissues_expression,
+                                       meta %>%
+                                         dplyr::select(c("Study.Abbreviation", "Study.Name")) %>%
+                                         distinct() %>%
+                                         sapply(trimws) %>%
+                                         as.data.frame(),
+                                       by = c("Tissue" = "Study.Abbreviation")) %>%
+  dplyr::select(-"Tissue") %>% 
+  mutate(Gene = ifelse(Genes %in% soi_genes, TRUE, FALSE)) %>% 
+  dplyr::arrange(Gene)
+
+
+# Create the key values for the GOIs
+keyvals1 <- ifelse(
+    usable_tissues_expression$Genes %in% soi_genes, '#D21717',
+        '#4d63b2')
+  keyvals1[is.na(keyvals1)] <- 'black'
+  names(keyvals1)[keyvals1 == '#D21717'] <- 'Gene of Interest'
+  names(keyvals1)[keyvals1 == '#4d63b2'] <- 'Background Gene'
+
+  # Create the volcano plot
+usable_tissues_expression_volcano <- EnhancedVolcano(usable_tissues_expression,
+                lab = usable_tissues_expression$Genes,
+                x = "logFC",
+                y = "P.Value",
+                title = "",
+                subtitle = "",
+                caption = "",
+                selectLab = soi_genes,
+                colCustom = keyvals1,
+                pointSize = c(ifelse(usable_tissues_expression$Genes %in% soi_genes,3, 1.2)),
+                xlim = c(min(usable_tissues_expression %>%
+                               filter(usable_tissues_expression$Genes %in% soi_genes) %>%
+                               pull(logFC)),
+                         max(usable_tissues_expression %>%
+                      filter(usable_tissues_expression$Genes %in% soi_genes) %>%
+                      pull(logFC))),
+                ylim = c(0,
+                         -log10(min(usable_tissues_expression %>%
+                               filter(usable_tissues_expression$Genes %in% soi_genes) %>%
+                               pull(P.Value)))),
+                drawConnectors = TRUE,
+                widthConnectors = 0.5,
+                colAlpha = 1,
+                pCutoff = 0.01,
+                FCcutoff = 1,
+                labSize = 6.5,
+                axisLabSize = 22,
+                legendLabSize = 22,
+                max.overlaps = 8,
+                min.segment.length = 2.5) +
+  facet_wrap(~Study.Name,
+             ncol = 1,
+             scales = "free") +
+  theme(strip.text = element_text(size = 22))
+
+
+pdf(paste0(plt_loc,"DGEA_VOLCANO_TYPES.pdf"),
+    height = 27, width = 20)
+usable_tissues_expression_volcano
+dev.off()
+```

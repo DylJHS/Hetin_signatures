@@ -1,0 +1,152 @@
+---
+  title: "TCGA_CNV_FEATURES"
+format: html
+editor: visual
+Notes: This script is intended to do some exploration of the samples in the CNV Features in the TCGA PanCan datasets.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+## Load the libraries
+
+```{r}
+library(dplyr)
+library(mltools)
+library(Hmisc)
+library(tidyverse)
+library(data.table)
+library(ggpubr)
+```
+
+Re-usable functions
+
+```{r}
+extract_element <- function(strings, index) {
+  # Split each string by "." and extract the third element
+  element_list <- sapply(stringr::str_split(strings, "\\-"),
+                         function(x) x[index])
+  return(element_list)
+}
+```
+
+Import data
+
+```{r}
+ori_segmnt_cnv <- read_tsv("Data/CIN_Features/CNV_Data/Chrom_seg_CNV.txt")
+ori_arm_cnv <- read_tsv("Data/CIN_Features/CNV_Data/PANCAN_ArmCallsAndAneuploidyScore_092817.txt")
+peri_cnv <- read.csv("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/CIN_Features/CNV_Data/TCGA_pericentro_cnv.csv") %>%
+  column_to_rownames("sampleID") 
+```
+
+ARM-LEVEL ANEUPLOIDIES
+
+```{r}
+# Replace the NAs with 0
+cvn_arm <- ori_arm_cnv %>% replace(is.na(.), 0)
+
+# Re-organise the columns 
+cnvs_arm <- cvn_arm %>%
+  column_to_rownames("Sample") %>% 
+  select(-c("Type", "Aneuploidy Score"))
+  
+```
+
+Get a sense of the data distribution for class imbalance
+```{r}
+
+old <- data.frame(Var1 = c(-1,0,1))
+for (i in colnames(cnvs_arm)){
+  d <- as.data.frame(table(cnvs_arm[[i]])) 
+  print(d)
+  old <- merge(old, d, by = "Var1")
+}
+
+```
+
+
+
+
+
+Visualisations of the relationships
+
+```{r}
+dist <- dist(cnvs_arm)
+dist_matrix <- as.matrix(dist)
+
+# Produce the MDS object.
+mds <- cmdscale(dist)
+
+# Convert the MDS object to a dataframe with additional features
+mds_df <- as.data.frame(mds) %>% 
+  dplyr::mutate(cancer_type = extract_element(rownames(cnvs_arm), 2),
+         sample_type = extract_element(rownames(cnvs_arm), 4),
+         synergy_type = paste(cancer_type, sample_type, sep = "-"))
+
+# Create the plots of the MDS.
+sample_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2",
+  color = "sample_type", # Colour based on the sample type
+  size = 1,
+  repel = TRUE
+)
+
+cancer_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2", 
+  color = "cancer_type", # Colour based on the cancer type
+  size = 1,
+  repel = TRUE) + theme(legend.position = "none")
+
+
+synergy_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2", 
+          color = "cancer_type", # Colour based on the synergy between the cancer and sample type
+          shape = "sample_type",
+          size = 1,
+          repel = TRUE) +
+  theme(legend.position = "none")
+  # coord_cartesian(xlim = c(-35, 20),
+  #                 ylim = c(-25,25))
+```
+
+The plots don't indicate to any means of separating the data via the arm aneuploidies
+
+PERICENTROMERIC ANEUPLOIDIES
+
+Visualisations of the relationships
+
+```{r}
+dist <- dist(peri_cnv)
+dist_matrix <- as.matrix(dist)
+
+# Produce the MDS object.
+mds <- cmdscale(dist)
+
+# Convert the MDS object to a dataframe with additional features
+mds_df <- as.data.frame(mds) %>% 
+  dplyr::mutate(cancer_type = extract_element(rownames(peri_cnv), 2),
+         sample_type = extract_element(rownames(peri_cnv), 4),
+         synergy_type = paste(cancer_type, sample_type, sep = "-"))
+
+# Create the plots of the MDS.
+sample_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2",
+  color = "sample_type", # Colour based on the sample type
+  size = 1,
+  repel = TRUE
+)
+
+cancer_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2", 
+  color = "cancer_type", # Colour based on the cancer type
+  size = 1,
+  repel = TRUE) + theme(legend.position = "none")
+
+
+synergy_mds <- ggpubr::ggscatter(mds_df, x = "V1", y = "V2", 
+          color = "cancer_type", # Colour based on the synergy between the cancer and sample type
+          shape = "sample_type",
+          size = 1,
+          repel = TRUE) +
+  theme(legend.position = "none")
+  # coord_cartesian(xlim = c(-35, 20),
+  #                 ylim = c(-25,25))
+```
+
+The plots don't indicate to any means of separating the data via the arm aneuploidies

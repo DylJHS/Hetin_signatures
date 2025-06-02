@@ -1,0 +1,322 @@
+---
+title: "CNV Segments"
+output: html_document
+date: "2024-05-28"
+Notes: This script is intended to transform the segment based CNV data into a more readable/standardised format.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+## Load the libraries
+
+```{r}
+library(dplyr)
+library(rtracklayer)
+library(tidyverse)
+```
+
+Import the data
+```{r}
+ori_segmnt_cnv <- read_tsv("Data/CIN_Features/CNV_Data/Chrom_seg_CNV.txt")
+all_segs <- import("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Raw_Data/Other/censat.bb") %>% as.data.frame()
+```
+
+I. HSat exclusive ranges
+1. Subset the data to the Hsat annotated regions only 
+```{r}
+peri_segs <- all_segs %>% 
+  filter(grepl("hsat", name)) %>% 
+  select(c("seqnames","start", "end", "width")) %>% 
+  arrange(seqnames, start)
+```
+
+2. Combine end-to-end hsat regions of the same chromosome
+```{r}
+combined_peri <- peri_segs %>%
+  group_by(seqnames) %>%
+  arrange(start) %>%
+  mutate(end_next = lead(start),
+         combined = ifelse(end == end_next & !is.na(end_next), TRUE, FALSE),
+         combined_group = 0) %>% 
+  select(-"end_next") %>% 
+  arrange(seqnames, start )
+
+for (i in 2:nrow(combined_peri)) {
+  combined_peri$combined_group[i] <- ifelse(
+    combined_peri$combined[i - 1], 
+    combined_peri$combined_group[i - 1],  
+    combined_peri$combined_group[i - 1] + 1  
+  )
+}
+
+combined_peri <- combined_peri %>% 
+  group_by(seqnames, combined_group) %>% 
+  summarise(start = dplyr::first(start),
+            end = last(end),
+            width = sum(width)) 
+```
+
+
+Conclusion: Flawed with too many variables (target features)
+
+
+
+II. Alternative range 1: Use HSat and beta and gamma Satellites to produce the pericentromeric regions 
+1. 
+```{r}
+# from the T2T data select the ranges for the annotations of satellites that correspond to pericentromeric sats 
+gbh_segs <- all_segs %>% 
+  filter((grepl("hsat", name)) | (grepl("gsat", name)) | (grepl("bsat", name))) %>% 
+  select(c("seqnames","start", "end", "width", "name")) %>% 
+  arrange(seqnames, start)
+```
+
+2. Combine end-to-end regions of the same chromosome
+```{r}
+# group by chromosome and identify adjacent ranges
+comb_gbh <- gbh_segs %>%
+  group_by(seqnames) %>%
+  arrange(start) %>%
+  mutate(end_next = lead(start),
+         combined = ifelse(end == end_next & !is.na(end_next), TRUE, FALSE),
+         combined_group = 0) %>% 
+  select(-"end_next") %>% 
+  arrange(seqnames, start )
+
+for (i in 2:nrow(comb_gbh)) {
+  comb_gbh$combined_group[i] <- ifelse(
+    comb_gbh$combined[i - 1], 
+    comb_gbh$combined_group[i - 1],  
+    comb_gbh$combined_group[i - 1] + 1  
+  )
+}
+
+# combine the adjacent ranges 
+comb_gbh <- comb_gbh %>% 
+  group_by(seqnames, combined_group) %>% 
+  summarise(start = dplyr::first(start),
+            end = last(end),
+            width = sum(width),
+            name = paste(name, collapse = ", ")) %>% 
+  filter(grepl("hsat", name))%>% 
+  select(-c("combined_group"))
+```
+
+Conclusion: Flawed with too many variables (target features)
+
+
+III. Alternative range 3:create the pericentromeric regions by combining the adjacent gbh (gamma, beta, HSat satellite) regions which are not separated by the active HOR region from the same chromosome. 
+For chromosome 3 and 4 need to make sure that they are not separated by any of the active HOR regions first. 
+
+Find the distances for the active HOR regions for each chromosome
+
+```{r}
+# Get all regions annotated as HOR alpha satellites, transition satellites (ct) or general centromeric satellites (censat)
+HOR_segs <- all_segs %>% 
+  filter((grepl("hor", name)) | (grepl("ct", name))|(grepl("censat", name))) %>% 
+  select(c("seqnames","start", "end", "width", "name")) %>% 
+  arrange(seqnames, start)
+
+# Combine the regions into a single range if they are a adjacent to one another and only select the ranges that contain an active HOR (true centromeric) region
+
+comb_HOR <- HOR_segs %>%
+  group_by(seqnames) %>%
+  arrange(start) %>%
+  mutate(end_next = lead(start),
+         combined = ifelse(end == end_next & !is.na(end_next), TRUE, FALSE),
+         combined_group = 0) %>% 
+  select(-"end_next") %>% 
+  arrange(seqnames, start )
+
+for (i in 2:nrow(comb_HOR)) {
+  comb_HOR$combined_group[i] <- ifelse(
+    comb_HOR$combined[i - 1], 
+    comb_HOR$combined_group[i - 1],  
+    comb_HOR$combined_group[i - 1] + 1  
+  )
+}
+
+comb_HOR <- comb_HOR %>% 
+  group_by(seqnames, combined_group) %>% 
+  summarise(start = dplyr::first(start),
+            end = last(end),
+            width = sum(width),
+            name = paste(name, collapse = ", ")) %>% 
+  filter((grepl("hor", name))&(grepl("L",name))) %>% 
+  select(-c("combined_group", "name"))
+```
+
+
+```{r}
+# Create the data frame that will contain the final pericentromeric regions
+
+final_peri <- data.frame(
+  Chromosome = character(), 
+  Start = numeric(), 
+  End = numeric(),
+  Width = numeric()
+)
+
+# Loop over the different chromosomes other than 3 and 4
+chroms <- unique(as.character(comb_gbh$seqnames))[!unique(comb_gbh$seqnames) %in% c("chr3", "chr4")]
+
+for (chr in chroms) {
+  gbh_ranges <- comb_gbh %>%
+    filter(seqnames == chr)
+  
+  # get the acctive HOR region for that chromosome
+  hor_start <- comb_HOR %>%
+    filter(seqnames == chr) %>%
+    pull(start) %>%
+    `[`(1)
+
+  # combine pre-combined gbh ranges that are either all upstream or downstream of the hor region
+  gbh_ranges <- gbh_ranges %>% 
+    mutate(
+      BfAf = ifelse(end <= hor_start, 0, 1)
+    ) %>% 
+    group_by(seqnames, BfAf) %>% 
+    summarise(
+      start = dplyr::first(start),
+      end = last(end),
+      width = sum(width)
+    ) %>% 
+    select(-BfAf)
+  
+  # add the new chromosome-specific pericentromeric regions to the final dataframe
+  final_peri <- rbind(final_peri,gbh_ranges)
+  
+}
+
+```
+Conclusion: Flawed due to the pericentromeric regions including areas of protein coding genes, rDNA as well as other satellites that are not pericentromeric in nature
+
+
+CHOSEN METHOD
+IV. Alternative range 4: Create the pericentromeric regions by combining the adjacent gbh (gamma, beta, HSat satellite) regions which can be gaped by centromeric transition (ct) regions and selecting the longest contiguous pericentromeric region as well as any additional pericentromeric ranges that are beyond a certain threshold
+
+```{r}
+# from the T2T data select the ranges for the annotations of satellites that correspond to pericentromeric sats 
+cgbh_segs <- all_segs %>% 
+  filter((grepl("hsat", name)) | 
+           (grepl("gsat", name)) | 
+           (grepl("bsat", name)) | 
+           (grepl("ct", name)) | 
+           (grepl("censat", name))) %>% 
+  select(c("seqnames","start", "end", "width", "name")) %>% 
+  arrange(seqnames, start)
+
+# Combine the adjacent ranges
+comb_cgbh <- cgbh_segs %>%
+  group_by(seqnames) %>%
+  arrange(start) %>%
+  mutate(end_next = lead(start),
+         combined = ifelse(end == end_next & !is.na(end_next), TRUE, FALSE),
+         combined_group = 0) %>% 
+  select(-"end_next") %>% 
+  arrange(seqnames, start )
+
+
+cgbh_subset <- comb_cgbh %>%
+  group_by(seqnames) %>%
+  mutate(first_hsat = cummax(grepl("hsat", name)),
+         last_hsat = rev(cummax(rev(grepl("hsat", name))))) %>%
+  filter((first_hsat == 1) & (last_hsat == 1)) %>%
+  select(-c("first_hsat","last_hsat")) %>%
+  ungroup()
+
+
+for (i in 2:nrow(cgbh_subset)) {
+  cgbh_subset$combined_group[i] <- ifelse(
+    cgbh_subset$combined[i - 1],
+    cgbh_subset$combined_group[i - 1],
+    cgbh_subset$combined_group[i - 1] + 1
+  )
+}
+
+
+# Ensuring that the resulting combined regions start and end with HSat regions
+adj_cgbh <- cgbh_subset %>%
+  group_by(seqnames, combined_group) %>%
+  mutate(first_hsat = cummax(grepl("hsat", name)),
+         last_hsat = rev(cummax(rev(grepl("hsat", name))))) %>% 
+  filter((first_hsat == 1) & (last_hsat == 1)) %>%
+  select(-c("first_hsat","last_hsat")) %>%
+  summarise(start_bp = dplyr::first(start),
+            end_bp = last(end),
+            width_bp = sum(width),
+            name = paste(name, collapse = ", ")) %>%
+  select(-c("combined_group"))
+
+final_cgbh <- adj_cgbh %>% 
+  group_by(seqnames) %>%
+  # filter((width_bp == max(width_bp)) | (width_bp >= 1000000)) %>%
+  mutate(
+    peri_id = case_when(
+      n() > 1 ~ paste0("peri_", substring(as.character(seqnames), 4, nchar(as.character(seqnames))), "_", row_number()),
+      TRUE ~ paste0("peri_", substring(as.character(seqnames), 4, nchar(as.character(seqnames))))),
+      seqnames = substring(as.character(seqnames), 4, nchar(as.character(seqnames)))
+    ) %>% 
+  rename(seqnames = "chromosome") %>% 
+  select(peri_id,chromosome, everything())
+  
+print(final_cgbh)
+
+```
+
+
+
+Conclusion: the above yields 27 pericentromeric regions from 1 different chromosomes. The chromosomes that do not have any pericentromeric regions assigned to them include chromosomes 6,11, 12, 18 & 19, which seems to add up with what is seen in the genome viewer as well as what has been reported by Altmose (2022). The chromosomes which display more than a single elongated pericentromeric region include chromosomes:
+- 13 with 3
+- 15 with 2
+- 16 with 2
+- 21 with 2
+- 22 with 4 
+- Y with 2
+
+
+
+V. Reconfigure the segmented copy number data in terms of the newly defined pericentromeric data
+```{r}
+cnv_long <- data.frame()
+for (chrm in unique(ori_segmnt_cnv$chr)){
+  if (!chrm %in% final_cgbh$chromosome){
+    next
+  } else {
+    check_sub <- final_cgbh %>% 
+      filter(chromosome == chrm)
+    seg_sub <- ori_segmnt_cnv %>%
+      filter(chr == chrm) %>%
+      expand_grid(check_sub) %>%
+      filter(
+        (start >= start_bp & start < end_bp) |
+          (end > start_bp & end <= end_bp) |
+          (start <= start_bp & end >= end_bp)
+      ) %>%
+      mutate(
+        overlap_start = pmax(start, start_bp),
+        overlap_end = pmin(end, end_bp),
+        overlap_length = overlap_end - overlap_start,
+        check_sub_length = end_bp - start_bp,
+        overlap_proportion = overlap_length / check_sub_length
+      ) %>%
+      group_by(peri_id, sampleID) %>% 
+      summarise(
+        cnv = sum(value * overlap_proportion) / sum(overlap_proportion),
+        .groups = 'drop'  # This option removes the grouping structure after summarisation
+      ) %>% 
+      select(sampleID, peri_id, cnv)
+  }
+  cnv_long <- rbind(cnv_long, seg_sub)
+}
+
+cnv_reformat <- pivot_wider(cnv_long, names_from = peri_id, values_from = cnv)
+cnv_reformat[is.na(cnv_reformat)] <- 0
+
+```
+
+
+
+

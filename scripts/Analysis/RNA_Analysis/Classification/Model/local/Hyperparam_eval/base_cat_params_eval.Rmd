@@ -1,0 +1,137 @@
+---
+title: "Categorical parameters Assessment"
+output: html_document
+date: "2024-06-18"
+Notes: "This is a file for the Categorical Parameters Assessment, where the parameters (weights, rna sets, depth) 
+of the categories are assessed and the results are presented in a table and visualized."
+---
+
+```{r}
+library(dplyr)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir="/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+Read in the data from the individual files
+```{r}
+folder <- "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/Model_output/Hyperparams/Base_models/categorical/mlogloss_measures"
+
+full_df <- data.frame()
+for (file in list.files(folder, pattern = "*.csv")){
+  current_file <- read.csv(paste0(folder, "/", file)) 
+  if ("Learning_Rate" %in% colnames(current_file)) {
+    current_file <- current_file %>% rename("Eta" = Learning_Rate)}
+  if ("Seed" %in% colnames(current_file)) {
+    full_df <- rbind(full_df, current_file)
+  } else {
+    current_file <- current_file %>% mutate(., Seed = NA)
+    full_df <- rbind(full_df, current_file)
+  }
+}
+
+# drop the duplicates
+full_df <- full_df %>% 
+  distinct()
+
+# Save the full_df to a csv
+# write.csv(full_df, "Data/Model_output/categorical/mlogloss_measures/Full_categorical_loss_metrics_df.csv", row.names = FALSE)
+
+```
+
+
+Create df of the unique Features by best loss
+```{r}
+arm_order <- c("1p", "1q", "2p", "2q", "3p", "3q", "4p", "4q", "5p", "5q", "6p", "6q", "7p", "7q", "8p", "8q", "9p", "9q", "10p", "10q", "11p", "11q", "12p", "12q", "13q", "14q", "15q", "16p", "16q", "17p", "17q", "18p", "18q", "19p", "19q", "20p", "20q", "21q", "22q")
+
+
+best_loss <- full_df %>% 
+  filter(!is.na(Seed)) %>%
+  group_by(Feature) %>% 
+  slice_min(Test_mlogloss, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(combo = paste(Weight_loss, Weight_normal, Weight_gain, sep = "_")) %>%
+  mutate(Feature = factor(Feature, levels = arm_order)) %>%
+  arrange(Feature) %>%
+  as.data.frame() %>% 
+  rename(., Max_depth = Depth) %>%
+  select(Feature, RNA_Set, Trees, Max_depth, Child_weight, Eta, Gamma, Weight_loss, Weight_normal , Weight_gain, Trained_mlogloss, Test_mlogloss, Seed)
+# 
+# # Save the best to a csv
+write.csv(best_loss, "Data/Model_output/Hyperparams/Base_models/categorical/best_loss.csv", row.names = FALSE)
+```
+
+Get frequency of the weights for the best loss
+```{r}
+weight_loss_freq <- as.data.frame(table(best_loss$Weight_loss)) %>% 
+  rename(Weight_loss = Var1)
+weight_gain_freq <- as.data.frame(table(best_loss$Weight_gain)) %>% 
+  rename(Weight_gain = Var1)
+weight_norm_freq <- as.data.frame(table(best_loss$Weight_normal)) %>% 
+  rename(Weight_normal = Var1)
+combo_freq <- as.data.frame(table(best_loss$combo)) %>%
+  rename(combo = Var1)
+```
+
+Get the frequency of the RNA sets for the best loss
+```{r}
+rna_freq <- as.data.frame(table(best_loss$RNA_Set)) %>% 
+  rename(RNA_Set = Var1) %>% 
+  merge(., 
+        best_loss %>% 
+          group_by(RNA_Set) %>% 
+          summarise(Test_mlogloss = mean(Test_mlogloss)), 
+        by = "RNA_Set")
+```
+
+Get the detph frequency for the best loss
+```{r}
+depth_freq <- as.data.frame(table(best_loss$Depth)) %>% 
+  rename(Depth = Var1) %>% 
+  merge(., 
+        best_loss %>% 
+          group_by(Depth) %>% 
+          summarise(Test_mlogloss = mean(Test_mlogloss)), 
+        by = "Depth")
+```
+
+Get the Eta frequency for the best loss
+```{r}
+eta_freq <- as.data.frame(table(best_loss$Eta)) %>% 
+  rename(Eta = Var1) %>% 
+  merge(., 
+        best_loss %>% 
+          group_by(Eta) %>% 
+          summarise(Test_mlogloss = mean(Test_mlogloss)), 
+        by = "Eta")
+```
+
+Get the gamma in terms of mlogloss difference
+```{r}
+gamma_dif_table <- best_loss %>% 
+  group_by(Gamma) %>% 
+  summarise(mlogloss_diff = mean(Test_mlogloss) - mean(Trained_mlogloss),
+            mean_test_mlogloss = mean(Test_mlogloss))
+
+# plot the gamma difference and mean test mlogloss
+gamma_dif_table %>% 
+  ggplot(aes(x = Gamma, y = mlogloss_diff)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Gamma difference in terms of mlogloss",
+       x = "Gamma",
+       y = "mlogloss difference") +
+  theme_minimal()
+```
+
+
+Save the frequency tables
+```{r}
+```
+

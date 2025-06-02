@@ -1,0 +1,102 @@
+---
+title: "TCGA_explore"
+output: html_document
+date: "2024-02-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+Load the libraries
+```{r}
+library(dplyr)
+library(plyr)
+library(knitr)
+library(tidyverse)
+``` 
+
+Load other options
+```{r}
+getOption("max.print")
+```
+
+
+```{r}
+sampletype <- read.delim("Data/Other/TCGA_meta/sampleType.tsv", sep = "\t", colClasses = c("character"))
+tissuesource <- read.delim("Data/Other/TCGA_meta/tissueSourceSite.tsv", sep = "\t")
+TCGAtpm <-read.delim("Data/RNA_Data/TCGA_TPM/tcga_RSEM_gene_tpm.txt", header = TRUE, sep = "\t", nrows = 4)
+```
+
+
+
+```{r}
+samples <- TCGAtpm[1, 2:ncol(TCGAtpm)] %>%
+  t() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Samples") %>%
+  mutate(type = strsplit(Samples, "\\.") %>% sapply("[[", 4), 
+         partic = strsplit(Samples, "\\.") %>% sapply("[[", 3)) %>%
+  inner_join(sampletype, by = c("type" = "Code"))
+```
+
+
+Check the total number of total Normal tissue types
+```{r}
+types <- count(samples$Definition, wt = NULL) 
+kable(types)
+```
+
+Total of 727 total normal type solid tissue samples
+
+
+Check how many of the 727 samples are duplicates from the same individual
+```{r}
+normalall <- samples[samples$Definition== "Solid Tissue Normal", ] %>% count("partic")
+```
+
+None of the normal type solid tissue samples are duplicated within this set
+
+
+
+
+Check how many of the 727 have cancerous duplicates
+```{r}
+
+subset_df <- samples[duplicated(samples$partic) | duplicated(samples$partic, fromLast = TRUE),]
+normaldupli <- count(subset_df$Definition)
+kable(normaldupli)
+```
+681 of the 727 non-cancerous samples have cancerous duplicates 
+
+
+Determine what the duplicates for the 681 normal samples are
+```{r}
+normalduplipart <- subset_df[subset_df$Definition == "Solid Tissue Normal", "partic"]
+duplinormals <-subset_df[subset_df$partic %in%  normalduplipart,]
+particduplinormalscount <- duplinormals %>% dplyr::count(partic, sort = TRUE)
+kable(head(particduplinormalscount))
+```
+
+
+
+
+
+```{r}
+defduplinormalscount <- duplinormals %>% dplyr::count(Definition, sort = TRUE)
+kable(head(defduplinormalscount))
+```
+681 normal tissue type samples with corresponding (duplicate) tissue types
+680 of the 681 have a primary solid tumor duplicate
+4 of the 681 have a metastatic duplicate
+3 of the 681 are triplicates with both a metastatic and a primary solid tumor duplicate
+
+
+get the full list of samples whose participants have both a cancer sample and a control 
+```{r}
+metastatic_participants <- duplinormals[duplinormals$Definition == "Metastatic", "partic"]
+usable_participants <-subset_df[subset_df$partic %in%  normalduplipart & !(subset_df$partic %in%  metastatic_participants),]
+
+```
+
+677 usable participants with both Normal Tissue and Cancer Tissue without metastatic 
+

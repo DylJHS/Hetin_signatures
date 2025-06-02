@@ -1,0 +1,1455 @@
+---
+title: "Combined TCGA Tests"
+output: html_document
+date: "2024-02-29"
+Note: This is the Comparative Exploratory analysis using solely the TCGA data, both cancerous and non-cancerous, without the data acquisition and wrangling steps which are performed in the python scripts.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+Load the libraries
+```{r}
+library(dplyr)
+library(plyr)
+library(coin)
+library(knitr)
+library(jmuOutlier)
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+library(tidyr)
+library(rstatix)
+library(GGally)
+library(psych)
+library(ggsci)
+library(EnhancedVolcano)
+library(ggalt)
+library(kableExtra)
+``` 
+Load other options
+```{r}
+getOption("max.print")
+```
+
+Load the datasets
+```{r}
+# Normal SOI set
+soi_nrm <- read.csv("Data/RNA_Data/TCGA_TPM/TCGA_Normal_mRNA_TPM_SOI.csv")
+
+# Cancerous SOI set
+soi_can <- read.csv("Data/RNA_Data/TCGA_TPM/TCGA_mRNA_TPM_SOI.csv")
+
+# Load the meta data
+meta_data <- read.csv("Data/Other/TCGA_meta/tissueSourceSite.tsv", sep = "\t")
+abbrvs_data <- read.csv("Data/Other/TCGA_meta/diseaseStudy.tsv", sep = "\t")
+```
+
+Add the abbriviations to the full meta data df
+```{r}
+meta_data <- merge(meta_data,
+                   abbrvs_data,
+                   by = "Study.Name",
+                   All = FALSE)
+```
+
+
+Set the number of control sets to analyse
+```{r}
+num_datasets <- 547
+```
+
+Configure function that builds the set of interest metrics
+```{r}
+
+calculate_summary <- function(input_dataframe) {
+  df_name <- deparse(substitute(input_dataframe))
+  
+  # Calculate column (sample) means
+  means <- colMeans(input_dataframe[, -c(1, 2)], na.rm = TRUE)
+  
+  # Create a new dataframe to store the summary
+  Summary_Dataframe <- data.frame( Mean = means)
+  prefix <- sub("^(.*?)_.*$", "\\1", df_name)
+  colnames(Summary_Dataframe)[colnames(Summary_Dataframe) == "Mean"] <- paste0(prefix, "_geom_mean")
+  return(Summary_Dataframe)
+}
+
+```
+
+
+Part I. Inter-genomic Expression analysis 
+
+I) Cancerous & Normal individual TCGA Analysis 
+```{r}
+# Calculate the mean expression levels for each sample across all genes in the SOI for both the cancerous and healthy data
+# (average expression of all SOI genes by sample)
+nrm_soi_sum <- calculate_summary(soi_nrm)
+can_soi_sum <- calculate_summary(soi_can)
+```
+
+
+
+```{r}
+# Create a table that contains all th differences between the set of interest and control set, for each control set for the healthy samples
+nrm_Dif_table <- data.frame(id = rownames(nrm_soi_sum))
+# Create a table that contains all the SOI and Control_set global expression means for the healthy samples
+nrm_Mean_table <- data.frame(id = rownames(nrm_soi_sum), soi_mean = nrm_soi_sum$soi_geom_mean)
+
+# Create a table that contains all th differences between the set of interest and control set, for each control set for the cancerous samples
+can_Dif_table <- data.frame(id = rownames(can_soi_sum))
+# Create a table that contains all the SOI and Control_set global expression means for the cancerous samples
+can_Mean_table <- data.frame(id = rownames(can_soi_sum), soi_mean = can_soi_sum$soi_geom_mean)
+
+
+# Loop over the control datasets
+for (i in 1:num_datasets) {
+
+  # Read in the healthy control set data
+  nrm_ctrl_file <- paste("Data/RNA_Data/TCGA_TPM/TCGA_Normal_CTRL_Sets/TCGA_Normal_mRNA_TPM_CTRL_Set", i, ".csv", sep = "")
+  ctrl_set_nrm <- read.csv(nrm_ctrl_file)
+
+  # Calculate the summary statistics for the healthy control set
+  nrm_ctrl_summary <- calculate_summary(ctrl_set_nrm)
+
+  # Merge the summary statistics for the healthy control set with the summary statistics for the healthy SOI
+  nrm_summary <- merge(nrm_ctrl_summary %>% rownames_to_column(var = "id"),
+                 nrm_soi_sum %>% rownames_to_column(var = "id"),
+                 by = "id",
+                 all = FALSE,
+                 suffixes = c("", i)) %>%
+  mutate(mean_dif = soi_geom_mean - ctrl_geom_mean)
+
+  # Add the results to the difference and mean tables
+  nrm_Dif_table <- merge(nrm_Dif_table, nrm_summary %>% select(id, mean_dif),
+                     by = "id", all = FALSE, suffixes = c("", i)
+                     )
+  nrm_Mean_table <- merge(nrm_Mean_table, nrm_summary %>% select(id, ctrl_geom_mean),
+                     by = "id", all = FALSE, suffixes = c("", i)
+                     )
+
+  can_ctrl_file <- paste("Data/RNA_Data/TCGA_TPM/TCGA_Cancer_CTRL_Sets/TCGA_TPM_RNA_Control_df", i, ".csv", sep = "")
+  ctrl_set_can <- read.csv(can_ctrl_file)
+
+  can_ctrl_summary <- calculate_summary(ctrl_set_can)
+
+  can_summary <- merge(can_ctrl_summary %>% rownames_to_column(var = "id"),
+                 can_soi_sum %>% rownames_to_column(var = "id"),
+                 by = "id",
+                 all = FALSE,
+                 suffixes = c("", i)) %>%
+  mutate(mean_dif = soi_geom_mean - ctrl_geom_mean)
+
+  can_Dif_table <- merge(can_Dif_table, can_summary %>% select(id, mean_dif),
+                     by = "id", all = FALSE, suffixes = c("", i)
+                     )
+  can_Mean_table <- merge(can_Mean_table, can_summary %>% select(id, ctrl_geom_mean),
+                     by = "id", all = FALSE, suffixes = c("", i)
+                     )
+}
+
+can_Dif_table <- can_Dif_table %>% dplyr::rename(mean_dif1 = mean_dif)
+can_Mean_table <- can_Mean_table %>% dplyr::rename(ctrl_geom_mean1 = ctrl_geom_mean)
+
+nrm_Dif_table <- nrm_Dif_table %>% dplyr::rename(mean_dif1 = mean_dif)
+nrm_Mean_table <- nrm_Mean_table %>% dplyr::rename(ctrl_geom_mean1 = ctrl_geom_mean)
+```
+
+
+
+Choose a random set of 5 control gene-sets that will be used in the graphs
+
+```{r}
+set.seed(123)
+controls <- sample(1:num_datasets, 5)
+
+```
+
+
+
+
+QUESTION 1 
+
+
+A) Create violin plots of the differences of the average log2 expression to assess the type of paired test to perform on the the pairwise groups .
+
+```{r}
+
+dif_pairing_names <- unlist(lapply(controls, function(i) paste("mean_dif", i, sep ="")))
+
+can_violin_graph_long_data <- can_Dif_table %>%
+  select(all_of(dif_pairing_names)) %>%
+  pivot_longer(cols = dif_pairing_names,
+               names_to = "Variable",
+               values_to = "Value") %>%
+  filter(Value != 0)
+
+can_plot1 <- ggplot(can_violin_graph_long_data, aes(y = Value, x = Variable)) +
+  geom_violin(trim = FALSE, fill = "#778899", alpha = 0.5)+
+  geom_boxplot(varwidth = T, alpha  = 0.25, outlier.colour = "red")+
+  labs(x = "Unique SOI to Control-set Pairings ", y = expression("Δ Expression" ~ (log[2])),
+       title = "CANCEROUS: DISTRIBUTION OF THE SET-OF-INTEREST \n TO CONTROL-SET EXPRESSION DIFFERENCE ACROSS VARIOUS PAIRINGS") +
+   coord_cartesian(ylim = c(7, 11)) +
+  scale_y_continuous(breaks = seq(7, 11, by = 2)) +
+  theme(
+    legend.position = "none",
+    axis.title = element_text(size = 16, color = "black"),
+    axis.text = element_text(color = "black", size = 13),
+    axis.text.x = element_blank(),
+    panel.background = element_rect(fill = "white"),
+    legend.text = element_blank(),
+    plot.title = element_text(hjust = 0.5, size = 19),
+    panel.border = element_rect(fill = "transparent", color = "#8B6508", linewidth = 2),
+    panel.grid.major.y = element_line(color = "black", linewidth = 0.1, linetype = 2),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_line(color = "black", linewidth = 0.1, linetype = 2),
+    plot.title.position = "plot"
+  )
+
+
+nrm_violin_graph_long_data <- nrm_Dif_table %>%
+  select(all_of(dif_pairing_names)) %>%
+  pivot_longer(cols = dif_pairing_names,
+               names_to = "Variable",
+               values_to = "Value") %>%
+  filter(Value != 0)
+
+nrm_plot1 <- ggplot(nrm_violin_graph_long_data, aes(y = Value, x = Variable)) +
+  geom_violin(trim = FALSE, fill = "#778899", alpha = 0.5)+
+  geom_boxplot(varwidth = T, alpha  = 0.25, outlier.colour = "red")+
+  labs(x = "Unique SOI to Control-set Pairings ", y = expression("Δ Expression" ~ (log[2])),
+       title = "NON-CANCEROUS: DISTRIBUTION OF THE SET-OF-INTEREST \n TO CONTROL-SET EXPRESSION DIFFERENCE ACROSS VARIOUS PAIRINGS") +
+   coord_cartesian(ylim = c(7, 11)) +
+  scale_y_continuous(breaks = seq(7, 11, by = 2)) +
+  theme(
+    legend.position = "none",
+    axis.title = element_text(size = 16, color = "black"),
+    axis.text = element_text(color = "black", size = 13),
+    axis.text.x = element_blank(),
+    panel.background = element_rect(fill = "white"),
+    legend.text = element_blank(),
+    plot.title = element_text(hjust = 0.5, size = 19),
+    panel.border = element_rect(fill = "transparent", color = "#9B30FF", linewidth = 2),
+    panel.grid.major.y = element_line(color = "black", linewidth = 0.1, linetype = 2),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_line(color = "black", linewidth = 0.1, linetype = 2),
+    plot.title.position = "plot"
+  )
+
+print(can_plot1)
+
+print(nrm_plot1)
+``` 
+Interpretation: Cancerous plot: Indicate the non-normal distribution of several of the mean differences, indicating that the use of non-parametric tests may be best. Additionally, each of the violin plots shows long negative tail (negative skewness) which adds to the non-normality of the distribution but also indicates that some of the differences between the set of interest and the control gene-set were closer together. This might also be expected given that we are dealing with cancer samples in which there is a greater variation and can therefore be over-expression of all genes. Normal plot: Indicate a  non-normal distribution similar to those of the Cancerous plots. With a slightly diminished tail, indicating that the differences between the set of interest and the control set could be closer together than in the cancerous data. 
+
+
+
+B) Use a Friedman's test (non-parametric version of the RMA, which is a paired t-test for more than 2 groups) to test whether the different control groups differ significantly in their distributions.
+
+```{r}
+can_Fried_test_data <- can_Dif_table %>%
+  gather(key = "Pairing", value = "Difference", starts_with("mean")) %>%
+  mutate(Sample = as.factor(id), Pairing = as.factor(Pairing)) %>%
+  select(Sample, Pairing, Difference)
+
+can_friedman_result <- coin::friedman_test(Difference ~ Pairing | Sample, data = can_Fried_test_data)
+
+
+nrm_Fried_test_data <- nrm_Dif_table %>%
+  gather(key = "Pairing", value = "Difference", starts_with("mean")) %>%
+  mutate(Sample = as.factor(id), Pairing = as.factor(Pairing)) %>%
+  select(Sample, Pairing, Difference)
+
+nrm_friedman_result <- coin::friedman_test(Difference ~ Pairing | Sample, data = nrm_Fried_test_data)
+
+print(can_friedman_result)
+print(nrm_friedman_result)
+```
+Result: The p-values of the Friedman test for both the cancerous and normal data show a value fo less than 2.2e-16 which is significant.
+Interpretation: The Friedman test reveals that there is at least a significant differnece between 2 of the sets in both conditions. So we cannot come to the conclusion that the control sets (portraying the rest of the genome) within conditions are all similar (come from the same distribution).
+
+
+C) Construct a contrast analysis to assess each of the pairings against the general trend (excluding the current set)
+
+```{r}
+can_Paired_wilc_table <- can_Dif_table %>%
+  select(starts_with("mean_dif")) %>%
+  mutate_all(as.numeric)
+
+can_Contrast_table <- data.frame(Set = character(0), P_Value = numeric(0), Adj_P_Value = numeric(0), Significant = character(0))
+
+
+nrm_Paired_wilc_table <- nrm_Dif_table %>%
+  select(starts_with("mean_dif")) %>%
+  mutate_all(as.numeric)
+
+nrm_Contrast_table <- data.frame(Set = character(0), P_Value = numeric(0), Adj_P_Value = numeric(0), Significant = character(0))
+
+# Loop over each control gene-sets
+for (i in 1:num_datasets) {
+
+  set = paste('mean_dif', i, sep = "")
+  
+   can_Global_table <- can_Paired_wilc_table %>%
+    mutate(global = rowMeans(select(., -set), na.rm = TRUE)) %>%
+    select(set, global)
+
+   can_wlcx_paired_res <- wilcox.test(can_Global_table[[set]], can_Global_table$global, paired = TRUE)
+   can_Corrected_Pval <- can_wlcx_paired_res$p.value * num_datasets
+   can_Significant_value <- if(can_Corrected_Pval < 0.05) "TRUE" else "FALSE"
+
+   can_Contrast_table <- rbind(can_Contrast_table, data.frame(Set = set, P_Value = can_wlcx_paired_res$p.value, Adj_P_Value = can_Corrected_Pval,
+                                                              Significant = can_Significant_value)) %>% arrange(desc(Adj_P_Value))
+   
+   
+   nrm_Global_table <- nrm_Paired_wilc_table %>%
+    mutate(global = rowMeans(select(., -set), na.rm = TRUE)) %>%
+    select(set, global)
+
+   nrm_wlcx_paired_res <- wilcox.test(nrm_Global_table[[set]], nrm_Global_table$global, paired = TRUE)
+   nrm_Corrected_Pval <- nrm_wlcx_paired_res$p.value * num_datasets
+   nrm_Significant_value <- if(nrm_Corrected_Pval < 0.05) "TRUE" else "FALSE"
+
+   nrm_Contrast_table <- rbind(nrm_Contrast_table, data.frame(Set = set, P_Value = nrm_wlcx_paired_res$p.value, Adj_P_Value = nrm_Corrected_Pval,
+                                                              Significant = nrm_Significant_value)) %>% arrange(desc(Adj_P_Value))
+}
+
+can_Contrast_agg_count_table <- can_Contrast_table %>% group_by(Significant) %>% dplyr::summarise(count = n())
+print(can_Contrast_agg_count_table)
+
+nrm_Contrast_agg_count_table <- nrm_Contrast_table %>% group_by(Significant) %>% dplyr::summarise(count = n())
+print(nrm_Contrast_agg_count_table)
+```
+
+Result: The Contrast analysis shows that the expression pattern of the control gene-sets differs significantly compared to the average for  540/547 in the cancerous data and   526/547 in the healthy data, with an adjusted p-value < 0.01 using the paired Wilcoxon Signed Rank Test. 
+Interpretation: It can be said that most of the control gene-sets do not behave in the same general fashion given the majority of significant results. Meaning that there is significant variability within the different sets which should be expected given their distinct gene compositions, so it is apparent that the control sets are for the vast majority dissimilar in their expression profiles.
+
+
+
+D) Create plots of the differences of the average log2 expression across all pairings between the SOI and controls sets in order to visualise the similarities fo the behaviour between the controls and the SOI. 
+Seeing as the Friedman test came back indicating that at least one of the controls shows a different expression distribution compared to the others, cannot use the test as evidence to dismiss all controls but one. Instead we can visualise the general distribution across all controls to determine if they act in a similar fashion. 
+
+```{r}
+can_graph_long_data <- can_Dif_table %>% 
+  dplyr::select(starts_with("mean_dif")) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "Variable",
+               values_to = "Value") %>%
+  filter(Value > 0)
+
+nrm_graph_long_data <- nrm_Dif_table %>% 
+  dplyr::select(starts_with("mean_dif")) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "Variable",
+               values_to = "Value") %>%
+  filter(Value > 0)
+
+
+
+can_plot2 <- ggplot(can_graph_long_data, aes(y = Value, x = Variable)) +
+  geom_boxplot(varwidth = T, alpha  = 0.05, outlier.colour = "red")+
+    coord_cartesian(ylim = c(5, 11)) +
+  scale_y_continuous(breaks = seq(5, 11, by = 1)) +
+  labs(x = "Set-of-Interest / Control-set Pair ", y = expression("Expression Difference" ~ (log[2])),
+       title = "CANCEROUS: DISTRIBUTION OF THE SET-OF-INTEREST TO \n CONTROL-SET EXPRESSION DIFFERENCE ACROSS ALL PAIRINGS") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 19),
+    plot.title.position = "plot",
+    axis.title = element_text(size = 16, color = "black"),
+    axis.text = element_text(color = "black", size = 12),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.text = element_blank(),
+    legend.position = "none",
+    panel.border = element_rect(fill = "transparent", color = "#8B6508", linewidth = 2),
+    panel.grid.major.y = element_line(color = "black", linewidth = 0.1, linetype = 2),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_line(color = "black", linewidth = 0.1, linetype = 2),
+    panel.background = element_rect(fill = "white")
+)
+
+nrm_plot2 <- ggplot(nrm_graph_long_data, aes(y = Value, x = Variable)) +
+  geom_boxplot(varwidth = T, alpha  = 0.05, outlier.colour = "red")+
+    coord_cartesian(ylim = c(5, 11)) +
+  scale_y_continuous(breaks = seq(5, 11, by = 1)) +
+  labs(x = "Set-of-Interest / Control-set Pair ", y = expression("Expression Difference" ~ (log[2])),
+       title = "NON-CANCEROUS: DISTRIBUTION OF THE SET-OF-INTEREST TO \n CONTROL-SET EXPRESSION DIFFERENCE ACROSS ALL PAIRINGS") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 19),
+    plot.title.position = "plot",
+    axis.title = element_text(size = 16, color = "black"),
+    axis.text = element_text(color = "black", size = 12),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.text = element_blank(),
+    legend.position = "none",
+    panel.border = element_rect(fill = "transparent", color = "#9B30FF", linewidth = 2),
+    panel.grid.major.y = element_line(color = "black", linewidth = 0.1, linetype = 2),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_line(color = "black", linewidth = 0.1, linetype = 2),
+    panel.background = element_rect(fill = "white")
+)
+
+print(can_plot2)
+print(nrm_plot2)
+``` 
+Interpretation: Despite that fact that the Friedman Test and the Contrast Analysis resulted in significant results (indicating a significant difference in differential expression between the pairings), the plot hints at the difference in expression between every control set and the Set-of-Interest being bound in a consistent range centred between around 7 and 10 (although this is on a log2 scale, so a 128 - 1024 fold difference). The trend of the SOI to Control set expression difference for each of the pairings in the cancerous data shows a fairly consistent range between 7.5 and 10 on a log2 scale and between 6 and 10 when accounting for the outlier samples. Demonstrating a general over-expression in the SOI compared to the rest of the genome. This trend in the non-cancerous data shows an even narrower range between 7.5 and 9.5 on a log2 scale and between 7 and 9.5 when accounting for the outlier samples. Pointing to the general over-expression in the SOI being a common feature but with the difference being more variable in the cancerous data which is expected given the cancerous status. 
+
+
+E) Calculate the significance of the difference between the mean expression of the control-sets and the Set-of-Interest using a two-sided Paired Permutation Test for each control/SOI pair followed by a correction for multiple testing. 
+
+```{r}
+# Loop over each of the control datasets in the folder.
+# For each control-set perform a two-sided paired permutation test with the SOI.
+# Save the pvalue for each test in a dataframe.
+
+can_paired_tests_list <- list()
+nrm_paired_tests_list <- list()
+for (i in 1:num_datasets) {
+  ctrl <- paste("ctrl_geom_mean", i, sep ="")
+  
+  can_permutation_res <- perm.test(can_Mean_table$soi_mean, can_Mean_table[[ctrl]], alternative = "two.sided", mu = 0,
+      paired = TRUE, all.perms = TRUE, num.sim = 1000, plot = FALSE, stat = mean)
+  
+  nrm_permutation_res <- perm.test(nrm_Mean_table$soi_mean, nrm_Mean_table[[ctrl]], alternative = "two.sided", mu = 0,
+      paired = TRUE, all.perms = TRUE, num.sim = 1000, plot = FALSE, stat = mean)
+  
+  pair <- paste("Pair", i, sep ="_")
+  
+  can_pair_frame = data.frame(Pairing = pair, Pvalue = as.numeric(can_permutation_res$p.value), Corrected_Pval = as.numeric(p.adjust(can_permutation_res$p.value, method = "BH", n = num_datasets)))
+  can_paired_tests_list[[i]] <- can_pair_frame
+  
+  nrm_pair_frame = data.frame(Pairing = pair, Pvalue = as.numeric(nrm_permutation_res$p.value), Corrected_Pval = as.numeric(p.adjust(nrm_permutation_res$p.value, method = "BH", n = num_datasets)))
+  nrm_paired_tests_list[[i]] <- nrm_pair_frame
+}
+
+# Correct the P-value due to multiple testing by using the BH method.
+
+can_full_paired <- do.call(rbind, can_paired_tests_list) %>% arrange(desc(Pvalue))
+nrm_full_paired <- do.call(rbind, nrm_paired_tests_list) %>% arrange(desc(Pvalue))
+
+can_full_paired_table <- can_full_paired %>% group_by(Significant = Corrected_Pval <= 0.05) %>% dplyr::summarise(count = n())
+nrm_full_paired_table <- nrm_full_paired %>% group_by(Significant = Corrected_Pval <= 0.05) %>% dplyr::summarise(count = n())
+
+kable(can_full_paired_table)
+kable(nrm_full_paired_table)
+
+```
+Result: The results show a p-value of 0 for all pairings in both conditions
+
+Interpretation: the p-value generated by the two-sided paired permutation test demonstrates a significant difference between the means of the SOI and the Control_set for each of the control_sets. Indicating that the general expression of the genes of interest is reliably and significantly different than the general expression from the rest of the genome in both cancer and healthy tissues. 
+
+
+
+F) Demonstrate difference by showing the individual expression distributions of the SOI
+  and some (5) of the control gene-sets
+
+```{r}
+controls_names <- "soi_mean"
+controls_names <- append(controls_names,  unlist(lapply(controls, function(i) paste("ctrl_geom_mean", i, sep =""))))
+
+
+Pivot the data into a form that can be used by boxplot.
+
+can_long_data <- can_Mean_table %>%
+  select(all_of(controls_names)) %>%
+  pivot_longer( cols = everything(), names_to = "Variable", values_to = "Value")
+
+nrm_long_data <- nrm_Mean_table %>%
+  select(all_of(controls_names)) %>%
+  pivot_longer( cols = everything(), names_to = "Variable", values_to = "Value")
+
+
+can_full_paired <- can_full_paired %>% mutate(Control_Num = as.numeric(sub("Pair_", "", can_full_paired$Pairing)),
+                                      Sig = ifelse (can_full_paired$Corrected_Pval <= 0.001, "***",
+                           ifelse (can_full_paired$Corrected_Pval <= 0.01, "**",
+                                   ifelse (can_full_paired$Corrected_Pval <= 0.05, "*","NS"))))
+
+nrm_full_paired <- nrm_full_paired %>% mutate(Control_Num = as.numeric(sub("Pair_", "", nrm_full_paired$Pairing)),
+                                      Sig = ifelse (nrm_full_paired$Corrected_Pval <= 0.001, "***",
+                           ifelse (nrm_full_paired$Corrected_Pval <= 0.01, "**",
+                                   ifelse (nrm_full_paired$Corrected_Pval <= 0.05, "*","NS"))))
+
+
+# Create a new column in full_paired_wilc to match the Variable column in long_data
+can_full_paired$Variable <- paste("ctrl_geom_mean", can_full_paired$Control_Num, sep="")
+
+nrm_full_paired$Variable <- paste("ctrl_geom_mean", nrm_full_paired$Control_Num, sep="")
+
+
+# Merge full_paired_wilc with long_data
+can_merged_data <- merge(can_long_data, can_full_paired, by="Variable", all.x=TRUE)
+
+nrm_merged_data <- merge(nrm_long_data, nrm_full_paired, by="Variable", all.x=TRUE)
+
+# Reorder the Variable column in merged_data
+# merged_data$Variable <- factor(merged_data$Variable, levels = desired_order)
+
+
+# Define the specific comparisons
+can_specific_comparisons <- list(
+  c(controls_names[1], controls_names[-1][1]),
+  c(controls_names[1], controls_names[-1][2]),
+  c(controls_names[1], controls_names[-1][3]),
+  c(controls_names[1], controls_names[-1][4]),
+  c(controls_names[1], controls_names[-1][5])
+)
+
+nrm_specific_comparisons <- list(
+  c(controls_names[1], controls_names[-1][1]),
+  c(controls_names[1], controls_names[-1][2]),
+  c(controls_names[1], controls_names[-1][3]),
+  c(controls_names[1], controls_names[-1][4]),
+  c(controls_names[1], controls_names[-1][5])
+)
+
+can_specific_comparisons_ordered <-  can_specific_comparisons[order(sapply(can_specific_comparisons, function(x) x[2]))]
+
+nrm_specific_comparisons_ordered <-  nrm_specific_comparisons[order(sapply(nrm_specific_comparisons, function(x) x[2]))]
+
+# Extract corresponding p-values for these comparisons
+can_specific_p_values <- sapply(can_specific_comparisons_ordered, function(comp) {
+  
+  # Filter for rows where the Variable is either the SOI mean or the specific control
+  subset_data <- can_merged_data[can_merged_data$Variable %in% comp[2],]
+
+  # If there are multiple rows (as there should be for each pair), we take the unique p-value
+  unique_pval <- unique(subset_data$Sig)
+
+  # Return the unique p-value, or NA if not found
+  if (length(unique_pval) == 1) {
+    return(unique_pval)
+  } else {
+    return(NA)
+  }
+})
+
+# Extract corresponding p-values for these comparisons
+nrm_specific_p_values <- sapply(nrm_specific_comparisons_ordered, function(comp) {
+  
+  # Filter for rows where the Variable is either the SOI mean or the specific control
+  subset_data <- nrm_merged_data[nrm_merged_data$Variable %in% comp[2],]
+
+  # If there are multiple rows (as there should be for each pair), we take the unique p-value
+  unique_pval <- unique(subset_data$Sig)
+
+  # Return the unique p-value, or NA if not found
+  if (length(unique_pval) == 1) {
+    return(unique_pval)
+  } else {
+    return(NA)
+  }
+})
+
+
+```
+
+```{r}
+can_RNA_dif <- ggplot(can_long_data, aes( y = Value, x = Variable)) +
+  geom_boxplot(outlier.colour = 2, fill = "#778899") +
+  stat_boxplot(geom = "errorbar") +
+  coord_cartesian(ylim = c(-8, 8)) +
+  theme_minimal() +
+  labs(title = "CANCEROUS: DISTRIBUTION OF THE MEAN EXPRESSION \n IN THE SET-OF-INTEREST VS VARIOUS CONTROL-SETS",
+       y = expression("Expression" ~ (log[2])),) +
+  scale_x_discrete(labels = c("Control Set 118","Control Set 14","Control Set 179","Control Set 195","Control Set 306", "Set of Interest")) +
+  theme(
+        legend.position = "None",
+        axis.title.y = element_text(size= 19),
+        plot.subtitle = element_text(hjust= 0.5),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 17, angle = 0, vjust = 0.6),
+        axis.text.y = element_text(size = 17),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 25),
+        panel.background = element_rect(fill = "white"),
+        panel.grid.major.y = element_line(color = "black", linewidth = 0.25, linetype = 2),
+        panel.grid.minor.y = element_line(color = "black", linewidth = 0.25, linetype = 2),
+        panel.border = element_rect(fill = "transparent",
+                                    color = "#8B6508",
+                                    linewidth = 2)) +
+  geom_signif(comparisons = can_specific_comparisons_ordered,
+               annotations = can_specific_p_values,
+              step_increase = 0.04,
+              map_signif_level = TRUE,
+              textsize = 4.5,
+              tip_length = 0,
+              vjust = 0.4
+  )
+
+nrm_RNA_dif <- ggplot(nrm_long_data, aes( y = Value, x = Variable)) +
+  geom_boxplot(outlier.colour = 2, fill = "#778899") +
+  stat_boxplot(geom = "errorbar") +
+  coord_cartesian(ylim = c(-8, 8)) +
+  theme_minimal() +
+  labs(title = "NON-CANCEROUS: DISTRIBUTION OF THE MEAN EXPRESSION \n IN THE SET-OF-INTEREST VS VARIOUS CONTROL-SETS",
+       y = expression("Expression" ~ (log[2])),) +
+  scale_x_discrete(labels = c("Control Set 118","Control Set 14","Control Set 179","Control Set 195","Control Set 306", "Set of Interest")) +
+  theme(
+        legend.position = "None",
+        axis.title.y = element_text(size= 19),
+        plot.subtitle = element_text(hjust= 0.5),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 17, angle = 0, vjust = 0.6),
+        axis.text.y = element_text(size = 17),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 25),
+        panel.background = element_rect(fill = "white"),
+        panel.grid.major.y = element_line(color = "black", linewidth = 0.25, linetype = 2),
+        panel.grid.minor.y = element_line(color = "black", linewidth = 0.25, linetype = 2),
+        panel.border = element_rect(fill = "transparent",
+                                    color = "#9B30FF",
+                                    linewidth = 2)) +
+  geom_signif(comparisons = nrm_specific_comparisons_ordered,
+               annotations = nrm_specific_p_values,
+              step_increase = 0.04,
+              map_signif_level = TRUE,
+              textsize = 4.5,
+              tip_length = 0,
+              vjust = 0.5
+  )
+
+print(can_RNA_dif)
+print(nrm_RNA_dif)
+```
+Interpretation: the p-value and plots demonstrate that the expression pattern of the control gene-sets are significantly different from that of the SOI. The result is the same when using the cancerous data or the healthy data proving that this difference in expression is not an artifact brought on by cancer.
+
+Impact on analyses: future test can now use a single control gene-set to test against as it has been shown that the controls do not differ significantly from one another and all share a similar difference with the SOI.
+
+
+QUESTION 2
+
+Data using only a single control gene-set with more rows
+```{r}
+main_ctrl_num <- controls[2]
+
+can_file_name <- paste("Data/RNA_Data/TCGA_TPM/TCGA_Cancer_CTRL_Sets/TCGA_TPM_RNA_Control_df", main_ctrl_num, ".csv", sep = "")
+nrm_file_name <- paste("Data/RNA_Data/TCGA_TPM/TCGA_Normal_CTRL_Sets/TCGA_Normal_mRNA_TPM_CTRL_Set", main_ctrl_num, ".csv", sep = "")
+
+ctrl_can <- read.csv(can_file_name)
+ctrl_nrm <- read.csv(nrm_file_name)
+
+can_ctrl_sum1 <- calculate_summary(ctrl_can)
+nrm_ctrl_sum1 <- calculate_summary(ctrl_nrm)
+
+can_duo_table <- merge(can_soi_sum, can_ctrl_sum1 %>% select(ctrl_geom_mean), by = 0, all = FALSE) %>% 
+  mutate(mean_dif = soi_geom_mean - ctrl_geom_mean,
+         TSS.Code = sapply(str_split(Row.names, "\\."), `[`, 2)) %>%  
+  dplyr::rename(SAMPID = Row.names)
+nrm_duo_table <- merge(nrm_soi_sum, nrm_ctrl_sum1 %>% select(ctrl_geom_mean), by = 0, all = FALSE) %>% 
+  mutate(mean_dif = soi_geom_mean - ctrl_geom_mean,
+         TSS.Code = sapply(str_split(Row.names, "\\."), `[`, 2)) %>%  
+  dplyr::rename(SAMPID = Row.names)
+
+
+can_duo_table2 <- merge(can_duo_table, meta_data[c("TSS.Code","Study.Abbreviation")],
+                    by = "TSS.Code", all = FALSE)
+nrm_duo_table2 <- merge(nrm_duo_table, meta_data[c("TSS.Code","Study.Abbreviation")],
+                    by = "TSS.Code", all = FALSE)
+
+
+```
+
+
+A) Create a barplot of the samples vs their mean differences in the mean log2 RNA values segmented by Tissue Type.
+
+```{r}
+
+can_RNA_TSS <- ggplot(can_duo_table2, aes(x = factor(SAMPID), y = mean_dif)) + 
+  geom_col(alpha = 0.72, fill = "#8B6508") +
+  theme_minimal() +
+  labs(y = expression("Expression Difference" ~ (log[2])),
+       x = "Samples",
+       title = "CANCEROUS: EXPRESSION DIFFERENCE ACROSS SAMPLES BY TUMOUR SOURCE TYPE") +
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.y = element_text(size = 17), 
+    axis.text.y = element_text(size = 13),
+    axis.title.x = element_blank(), 
+    plot.title = element_text(hjust = 0.5, size = 20),
+    plot.title.position = "plot",
+    panel.background = element_rect(fill = "white"),
+    panel.grid.major.y = element_line(color = "black", linewidth = 0.5, linetype = 2),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.line = element_line(linewidth = 0.35, linetype = "solid", colour = "black"),
+    panel.border = element_rect(fill = "transparent", color = 1, linewidth = 1),
+    strip.text = element_text(size = 12)) +
+  guides(fill = guide_legend(ncol = 8, title = "Source Tissue Type", title.position = "top")) +
+  facet_wrap(~Study.Abbreviation, ncol = 4, scales = "free_x", labeller = labeller(Study = function(label) label))
+
+nrm_RNA_TSS <- ggplot(nrm_duo_table2, aes(x = factor(SAMPID), y = mean_dif)) + 
+  geom_col(alpha = 0.72, fill = "#9B30FF") +
+  theme_minimal() +
+  labs(y = expression("Expression Difference" ~ (log[2])),
+       x = "Samples",
+       title = "NON-CANCEROUS: EXPRESSION DIFFERENCE ACROSS SAMPLES BY TUMOUR SOURCE TYPE") +
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.y = element_text(size = 17), 
+    axis.text.y = element_text(size = 13),
+    axis.title.x = element_blank(), 
+    plot.title = element_text(hjust = 0.5, size = 20),
+    plot.title.position = "plot",
+    panel.background = element_rect(fill = "white"),
+    panel.grid.major.y = element_line(color = "black", linewidth = 0.5, linetype = 2),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.line = element_line(linewidth = 0.35, linetype = "solid", colour = "black"),
+    panel.border = element_rect(fill = "transparent", color = 1, linewidth = 1),
+    strip.text = element_text(size = 12)) +
+  guides(fill = guide_legend(ncol = 8, title = "Source Tissue Type", title.position = "top")) +
+  facet_wrap(~Study.Abbreviation, ncol = 4, scales = "free_x", labeller = labeller(Study = function(label) label))
+
+print(can_RNA_TSS)
+print(nrm_RNA_TSS)
+``` 
+
+Interpretation: The positive difference in average expression between the SOI and the control gene-set is maintained across all cancer types and all tissue types in the healthy data.
+
+
+B) Apply a two-sided paired permutation test between the SOI and the control gene-set while grouping by cancer type in the form of Tissue Type and calculate the mean difference of each group
+
+```{r}
+# Get unique values of 'Tissue Type' for grouping
+can_unique_Study <- unique(can_duo_table2$Study.Abbreviation)
+nrm_unique_Study <- unique(nrm_duo_table2$Study.Abbreviation)
+
+# Initialize a df to store the test results
+can_Results_table <- data.frame(Study = character(0), P_Value = numeric(0), Adj_P_Value = numeric(0), Significant_value= character(0), sample_n = numeric(0), mean_dif = numeric(0))
+nrm_Results_table <- data.frame(Study = character(0), P_Value = numeric(0), Adj_P_Value = numeric(0), Significant_value= character(0), sample_n = numeric(0), mean_dif = numeric(0))
+
+# Loop through each unique value of 'Tissue Type'
+for (i in 1:length(can_unique_Study)) {
+  current_Study <- can_unique_Study[i]
+  
+  # Subset the data for the current group
+  subset_data <- can_duo_table2[can_duo_table2$Study.Abbreviation == current_Study, ]
+  sample_num <- length(subset_data$SAMPID)
+  
+  # Perform the paired permutation test for the current group
+  test_result <- perm.test(subset_data$soi_geom_mean, subset_data$ctrl_geom_mean,
+                            alternative = "two.sided", mu = 0, paired = TRUE,
+                            all.perms = TRUE, num.sim = 10000, plot = FALSE, stat = mean)
+
+  # Correct the p_value using the Benjamini Hochberg correction method
+  Corrected_Pval <- p.adjust(test_result$p.value, method = "BH", n = length(can_unique_Study)) 
+  Significant_val <- if(Corrected_Pval < 0.05) "TRUE" else "FALSE"
+  
+  # Calculate the mean Expression value per group
+  mean_dif <- mean(subset_data$mean_dif)
+  
+  # Store the result in  'Results_table' 
+  can_Results_table <- rbind(can_Results_table, 
+                             data.frame(Study = current_Study, 
+                                        P_Value = test_result$p.value,
+                                        Adj_P_Value = Corrected_Pval, 
+                                        Significant_value  = Significant_val,
+                                        sample_n = sample_num,
+                                        mean_dif = mean_dif)
+                             ) %>% arrange(desc(mean_dif))
+}
+
+for (i in 1:length(nrm_unique_Study)) {
+  current_Study <- nrm_unique_Study[i]
+  
+  # Subset the data for the current group
+  subset_data <- nrm_duo_table2[nrm_duo_table2$Study.Abbreviation == current_Study, ]
+  sample_num <- length(subset_data$SAMPID)
+  
+  # Perform the paired permutation test for the current group
+  test_result <- perm.test(subset_data$soi_geom_mean, subset_data$ctrl_geom_mean,
+                            alternative = "two.sided", mu = 0, paired = TRUE,
+                            all.perms = TRUE, num.sim = 10000, plot = FALSE, stat = mean)
+
+  # Correct the p_value using the Benjamini Hochberg correction method
+  Corrected_Pval <- p.adjust(test_result$p.value, method = "BH", n = length(nrm_unique_Study)) 
+  Significant_val <- if(Corrected_Pval < 0.05) "TRUE" else "FALSE"
+  
+  # Calculate the mean Expression value per group
+  mean_dif <- mean(subset_data$mean_dif)
+  
+  # Store the result in  'Results_table' 
+  nrm_Results_table <- rbind(nrm_Results_table, 
+                             data.frame(Study = current_Study, 
+                                        P_Value = test_result$p.value, 
+                                        Adj_P_Value = Corrected_Pval,
+                                        Significant_value  = Significant_val, 
+                                        sample_n = sample_num,
+                                        mean_dif = mean_dif
+                                        )
+                             ) %>%
+    arrange(desc(mean_dif))
+}
+
+can_Results_table_summary <- can_Results_table %>%
+  group_by(Significant_value) %>%
+  dplyr::summarise(count = n())
+
+nrm_Results_table_summary <- nrm_Results_table %>%
+  group_by(Significant_value) %>%
+  dplyr::summarise(count = n())
+
+kable(can_Results_table_summary)
+kable(nrm_Results_table_summary)
+```
+Results: All of the cancer types are shown to have a significant difference between the general Expression of the SOI and the control gene-set. In the non-cancerous data, 7 Tissue types are identified as not having a significant difference between the expression levels in the SOI vs the rest of their genomes. However, the result could be due to the low number of samples for these tissue types as none has more than 10 samples. 
+
+
+
+C) Create barplot of each Tissue Type group, based on mean Expression difference level.
+
+```{r}
+
+ggplot(can_Results_table, aes(x = Study, y = mean_dif)) +
+  geom_bar(stat = "identity", fill = "#8B6508") +
+  theme_minimal() +
+  labs(title = "Average Expression Difference in Set-of-Interest vs control gene-set", 
+       y = "Mean Log2 Expression Difference")+
+  theme(
+        axis.title = element_text(size = 13),
+        axis.text.x = element_text(angle = 90),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 16),
+        panel.grid.major = element_line(color = "black",
+                                        linewidth = 0.5,
+                                        linetype = 1),
+        panel.grid.minor = element_line(color = "black",
+                                        linewidth = 0.2,
+                                        linetype = 1),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",
+                                    color = 1,
+                                    linewidth = 2)) 
+
+ggplot(nrm_Results_table, aes(x = Study, y = mean_dif)) +
+  geom_bar(stat = "identity", fill = "#9B30FF") +
+  theme_minimal() +
+  labs(title = "Average Expression Difference in Set-of-Interest vs control gene-set", 
+       y = "Mean Log2 Expression Difference")+
+  theme(
+        axis.title = element_text(size = 13),
+        axis.text.x = element_text(angle = 90),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 16),
+        panel.grid.major = element_line(color = "black",
+                                        linewidth = 0.5,
+                                        linetype = 1),
+        panel.grid.minor = element_line(color = "black",
+                                        linewidth = 0.2,
+                                        linetype = 1),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",
+                                    color = 1,
+                                    linewidth = 2)) 
+
+``` 
+
+Interpretation: Indicates that the Expression pattern of positive ∆ mean Expression between the SOI and the control gene-set is present across all cancer types and tissue types for the healthy data and that there are some differences in these levels. 
+
+
+
+
+
+
+
+
+
+
+
+II) healthy vs Cancerous Combined Analysis
+
+Configure function that builds the set of interest metrics
+
+```{r}
+
+calculate_summary <- function(input_dataframe) {
+  df_name <- deparse(substitute(input_dataframe))
+
+  # Calculate column means
+  means <- colMeans(input_dataframe[, -c(1, 2)], na.rm = TRUE)
+
+  # Create a new dataframe to store the summary
+  summary_dataframe <- data.frame(Mean = means)
+
+  prefix <- sub("^(.*?)_.*$", "\\1", df_name)
+
+  colnames(summary_dataframe)[colnames(summary_dataframe) == "Mean"] <-
+    paste0("geom_mean_", prefix)
+
+  return(summary_dataframe)
+}
+```
+
+Build the metrics dfs for both the tumour and the healthy data and merge
+the dfs on the shared Participants
+
+```{r}
+soi_merge <- merge(calculate_summary(soi_nrm) %>%
+                     rownames_to_column(var = "id") %>%
+                     rowwise() %>%
+                     mutate(Participant = strsplit(id, "\\.")[[1]][3],
+                            TSS.Code = strsplit(id, "\\.")[[1]][2]) %>%
+                     select(-c("id")),
+                   calculate_summary(soi_can) %>%
+                     rownames_to_column(var = "id") %>%
+                     rowwise() %>%
+                     mutate(Participant = strsplit(id, "\\.")[[1]][3]) %>%
+                     select(-c("id")),
+                   by = "Participant",
+                   all = FALSE,
+                   suffixes = c("_nrm", "_can"))
+
+soi_combo <- merge(soi_merge,
+                   meta_data %>% select(c("TSS.Code", "Study.Abbreviation")),
+                   by = "TSS.Code",
+                   all = FALSE) %>% 
+  select(-c("TSS.Code"))
+
+
+soi_combo <- soi_combo %>%
+  dplyr::rename(geom_mean_nrm_soi = geom_mean_soi_nrm,
+                geom_mean_can_soi = geom_mean_soi_can,
+                tissue_type = Study.Abbreviation)
+```
+
+construct a table to perform a paired wilcoxon test to assess the
+differences between the two conditions using the aggregate values of the
+SOI
+
+```{r}
+
+data <- soi_combo %>%
+  tidyr::gather(key = "Condition",
+         value = "Geom_mean", geom_mean_nrm_soi, geom_mean_can_soi)
+print(head(data, n = 15))
+```
+
+
+A)  Data Assessment Plotting the distribution of the difference between
+    the means to assess the symmetry and whether a wilcoxon signed rank
+    test can be applied to the data. Also assessing the 'Skew' metric
+    for the same purpose
+
+```{r}
+soi_combo$dif <- soi_combo$geom_mean_can_soi - soi_combo$geom_mean_nrm_soi
+ggplot(soi_combo, aes(x = "", y = dif)) +
+  stat_boxplot(geom = "errorbar",
+               width = 0.15) +
+  geom_boxplot()
+
+
+describe(soi_combo) 
+```
+
+Results: Fairly symmetrical boxplot and skew of 0.4131667
+Interpretation: Given that the plot is quite symmetrical and that the
+skew value is between 0 and 1, it can be assumed that the distribution is
+approximately symmetric, and can therefore use a Wilcoxon Signed Rank
+test.
+
+
+B)  SOI cancer-healthy expression differences Boxplots to visualise the
+    difference between the set of interest in cancerous data and the
+    non-cancerous data
+
+```{r}
+
+bxp <- ggpaired(data, x = "Condition", y = "Geom_mean",
+                id = "Participant",
+                order = c("geom_mean_nrm_soi", "geom_mean_can_soi"),
+                ylab = "Geom_mean", xlab = "Condition",
+                color = "Condition",
+                linetype = 0,
+                line.size = 0.02,
+                line.color = "grey35",
+                ggtheme = theme_classic(), palette = "lancet") +
+  geom_line(data = subset(
+    data, Participant %in% sample(unique(data$Participant), 15)
+  ),
+  aes(group = Participant),
+  color = "purple",
+  linetype = 2)
+bxp
+```
+
+Interpretation: The plot shows a slight uptrend in the mean expression
+of the SOI when shifting from the healthy samples to the cancerous ones.
+
+
+
+
+C) Perform the wilcoxon signed rank test to detect a significant difference
+   between the set of interest in cancerous data and the non-cancerous
+   data.
+
+```{r}
+stat_test <- data  %>%
+  wilcox_test(Geom_mean ~ Condition, paired = TRUE, alternative = "two.sided") %>%
+  add_significance()
+stat_test
+
+observed_val <- stat_test$p
+```
+
+Results: The difference between the mean expression levels of the SOI in
+the cancerous and healthy conditions is significant with a p_value of
+3.73e-21 when applying the one-sided wilcoxon signed rank test. 
+
+Interpretation: The significance test shows that the difference between the conditions is significant but whether or not it is meaningful partly depends on what the control groups show
+
+
+Control Sets cancer-healthy expression comparison
+
+```{r}
+all_combos <- soi_combo 
+results <- list()
+```
+
+
+D) Perform pairwise wilcoxon signed rank test using the paired expression
+   levels of the different control sets across conditions (healthy/cancerous)
+
+```{r}
+
+for (i in 1:num_datasets) {
+
+
+  can_ctrl_file <- paste(
+    "Data/RNA_Data/TCGA_TPM/TCGA_Cancer_CTRL_Sets/TCGA_TPM_RNA_Control_df", i,
+    ".csv", sep = ""
+  )
+  can_ctrl_set <- read.csv(can_ctrl_file)
+
+  nrm_ctrl_file <- paste(
+    "Data/RNA_Data/TCGA_TPM/TCGA_Normal_CTRL_Sets/TCGA_Normal_mRNA_TPM_CTRL_Set", # nolint: line_length_linter.
+    i,
+    ".csv", sep = ""
+  )
+  
+  nrm_ctrl_set <- read.csv(nrm_ctrl_file)
+
+  new_combo <- merge(calculate_summary(nrm_ctrl_set) %>%
+      rownames_to_column(var = "id") %>%
+      rowwise() %>%
+      mutate(Participant = strsplit(id, "\\.")[[1]][3]) %>%
+      select(-c("id")),
+    calculate_summary(can_ctrl_set) %>%
+      rownames_to_column(var = "id") %>%
+      rowwise() %>%
+      mutate(Participant = strsplit(id, "\\.")[[1]][3]) %>%
+      select(-c("id")),
+    by = "Participant",
+    all = FALSE
+  )
+  
+  new_combo <- new_combo %>%
+    dplyr::mutate( dif = geom_mean_can - geom_mean_nrm) %>% 
+    dplyr::rename(
+      !!paste0("geom_mean_nrm_", i) := geom_mean_nrm,
+      !!paste0("geom_mean_can_", i) := geom_mean_can,
+      !!paste0("dif_", i) := dif
+    )
+
+  all_combos <- all_combos %>% merge(new_combo,
+    by = "Participant",
+    all = FALSE
+  )
+
+  new_data <- new_combo %>%
+    gather(key = "Condition", value = "Geom_mean", 2, 3)
+
+  new_stat_res <- new_data  %>%
+    wilcox_test(Geom_mean ~ Condition, paired = TRUE, alternative = "two.sided") %>%
+    add_significance()
+
+  results[[i]] <- new_stat_res
+}
+
+all_combos <- all_combos %>%
+  dplyr::rename(dif_soi = dif)
+
+# Save the results to a file
+write.csv(all_combos, "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/RNA_data/Comparative_analysis_data/TCGA_all_combo_df.csv",
+          row.names = FALSE)
+
+```
+
+
+
+Combine the results into a single df and, adjust the p-value for
+multiple comparisons, assess how each control set compares to the set of
+interest and to the significance level.
+
+```{r}
+partial_results <- do.call(rbind, results)
+partial_results <- rbind(partial_results, stat_test)
+full_results <- mutate(
+  partial_results, Adjusted_p = p.adjust(partial_results$p, method = "BH"),
+  significant_value = ifelse(Adjusted_p < 0.05, "TRUE", "FALSE"),
+  greater_or_equal = ifelse(Adjusted_p <= observed_val, "TRUE", "FALSE"),
+  similar_level = ifelse(p.signif == "****", "TRUE", "FALSE")
+)
+# 
+head(full_results)
+```
+
+Build table to compare the assessments made above.
+
+```{r}
+contrast_agg_count_table <- full_results[,c("significant_value","greater_or_equal","similar_level")]
+
+
+summary_table <- contrast_agg_count_table %>%
+  dplyr::reframe(across(everything(),
+                   ~ list("TRUE" = sum(. == "TRUE"), "FALSE" = sum(. == "FALSE"))))
+
+
+summary_table <- as.data.frame(t(summary_table))%>%  
+  mutate(Percent_TRUE = round(as.numeric(V1) / (as.numeric(V1) + as.numeric(V2)), 3),
+         Fract = paste(V1, "/", as.numeric(V1) + as.numeric(V2))) %>% 
+  dplyr::rename("TRUE" = V1,
+         "FALSE" = V2)
+
+head(summary_table)
+```
+
+Results: Out of the 547 sets :
+- 110 (0.201) are also significant
+- 31 (0.057) are of similar significance level (four stars)
+- 0 are of equal or greater significance
+
+Interpretation: The difference between the condition for the set of interest is quite significant when compared to that of the control sets. 
+
+Need to get info about the directionality of the differences across the sets.
+
+```{r}
+numbers_list <- seq(1, num_datasets)
+```
+
+```{r}
+names <- c("Participant",
+  "geom_mean_nrm_soi",
+  "geom_mean_can_soi",
+  unlist(lapply(numbers_list, function(i) paste("geom_mean_nrm", i, sep = "_"))),
+  unlist(lapply(numbers_list, function(i) paste("geom_mean_can", i, sep = "_")))
+)
+select_combos <- all_combos %>% dplyr::select(all_of(names))
+
+box_pivot_combos <- select_combos %>%
+  pivot_longer(!Participant, names_to = "set", values_to = "Expression") %>%
+  mutate(type = if_else(grepl("can", set), "Cancerous", "Normal"),
+         set_group = sub(".*_", "", set))
+
+```
+
+E) Boxplots to visualise the difference between the set of interest in
+   cancerous data and the non-cancerous data
+
+```{r}
+
+bxp2 <- ggpaired(box_pivot_combos, x = "type", y = "Expression",
+                 id = "Participant",
+                 order = c("Normal", "Cancerous"),
+                 ylab = "Expression", xlab = "Condition",
+                 color = "type",
+                 linetype = 0,
+                 line.size = 1,
+                 line.color = "purple",
+                 ggtheme = theme_classic(), palette = "lancet") +
+  facet_wrap(~set_group, ncol = 6, scales = "free") +
+  geom_line(data = subset(
+    box_pivot_combos, Participant %in% sample(unique(box_pivot_combos$Participant), 9)
+  ),
+  aes(group = Participant),
+  color = "grey50",
+  linetype = 2
+  )
+
+bxp2
+```
+Interpretation: The paired plot for the SOI shows not just a greater uptrend in the mean expression
+of the SOI when shifting from the healthy samples to the cancerous ones form about 3.8 to 3.9 on a log2 scale, but also a greater mean expression overall at around 3.8 versus the random control sets which reside at levels between -4 and -6 on a log2 scale. Demonstrating that the SOI is, when taken as an aggregate, has a higher general expression, and is up-regulated in cancer. 
+
+
+Demonstrate this up-regualtion with the actual log-fold changes between the cancer and healthy samples across conditions.
+```{r}
+names2 <- c(
+  "dif_soi",
+  unlist(lapply(numbers_list, function(i) paste("dif", i, sep = "_")))
+)
+select_combos2 <- all_combos %>% dplyr::select(all_of(names2))
+
+pivot_main <- select_combos2 %>%
+  pivot_longer(cols = everything(), names_to = "group", values_to = "Log2FC") %>% 
+  group_by(group) %>%
+  summarise_at(vars("Log2FC"), list(mean_log2fc = mean, std_log2fc = sd))%>%
+  mutate(set = sub(".*_", "", group))
+
+```
+
+```{r}
+summary_pivot <- merge(pivot_main %>%
+  select(-c("group")),
+  full_results %>%
+    mutate( set = sub(".*_", "", group1)) %>% 
+    select(c("set", "Adjusted_p", "p")),
+  by = "set",
+  all = FALSE
+)
+
+# Save the data to a csv file
+write.csv(summary_pivot, "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/RNA_data/Comparative_analysis_data/TCGA_full_Sets_Summary.csv", row.names = FALSE)
+```
+
+
+F) Volcano plot demonstrating the effect of the up-regulation in the SOI and how it compares to the other sets
+
+```{r}
+numbers_list <- seq(1, 547)
+
+# Load the data
+summary_pivot <- read.csv("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/RNA_data/Comparative_analysis_data/TCGA_full_Sets_Summary.csv")
+
+summary_pivot$set <- factor(summary_pivot$set, levels = c("soi", numbers_list))
+
+keyvals <- ifelse(
+  summary_pivot$set == "soi", "#D21717", "#4d63b2")
+  keyvals[is.na(keyvals)] <- 'black'
+  names(keyvals)[keyvals == '#D21717'] <- 'Set of Interest'
+  names(keyvals)[keyvals == '#4d63b2'] <- 'Control Set'
+
+
+Full_Volcano <- EnhancedVolcano(summary_pivot,
+                lab = summary_pivot$set,
+                x = "mean_log2fc",
+                y = "p",
+                caption = "",
+                selectLab = "None",
+                title = "",
+                subtitle = "",
+                xlim = c(-0.25,0.25),
+                colCustom = keyvals,
+                colAlpha = 1,
+                pCutoff = 0.01,
+                FCcutoff = 0.2,
+                pointSize = ifelse(
+  summary_pivot$set == "soi", 6, 3.3),
+                cutoffLineType = "blank",
+                cutoffLineCol = "black",
+                legendPosition = "top",
+                captionLabSize = 20,
+                legendLabSize = 24,
+                legendIconSize =4.4,
+                axisLabSize = 25) + 
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black", linewidth = 0.5)
+
+pdf("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Plots/RNA_Plots/RNA_Plts_Part_I/Sets Volcano Plots/Full_Volcano.pdf", width = 10, height = 10)
+print(Full_Volcano)
+dev.off()
+
+```
+
+
+Interpretation: The Volcano plot confirms that the set of interest demonstrates a significant and general up-regulation that varies greatly from the rest of the genome. The SOI is the most significant set in the plot and demonstrates a meaningfully different fold change when compared to the control sets.
+
+
+
+Repeat the above looking at the effect across different cancer/tissue types
+- Parse the data along the lines of the tissue type
+- Perform the Wilcoxon signed rank test between the two conditions
+- Create the corresponding volcano plot highlighting the SOI
+- Create the corresponding df
+- Repeat for the next tissue type
+
+```{r}
+# get the list of columns needed
+col_list <-  c("soi", numbers_list)
+
+# Create a df to store the results for all tissue types
+all_tissue_summary <- data.frame(Tissue = character(0), Set = character(0), avg_log2fc = numeric(0), p_val = numeric(0), adjusted_p = numeric(0))
+
+# Loop over all the tissue types
+for (tissue in unique(all_combos$tissue_type)){
+  
+  # Subset the data for the current tissue type
+  type_subset <- all_combos[all_combos$tissue_type == tissue,]
+  
+  # Create a df to store the results for the current tissue type
+  tissue_summary <- data.frame(Tissue = character(0), Set = character(0), avg_log2fc = numeric(0), p_val = numeric(0))
+  
+  # Loop over all the sets
+  for (col in col_list) {
+    # Select the columns needed for the test
+    set_selection <- c(paste("geom_mean_nrm", col, sep = "_"),
+                   paste("geom_mean_can", col, sep = "_"),
+                   paste("dif", col, sep = "_"))
+    
+    # Subset the data for the current set
+    type_set_subset <- type_subset %>%
+      select(all_of(set_selection))
+    
+    # Perform the wilcoxon signed rank test
+    type_set_subset_gathered <- type_set_subset %>% 
+      gather(key = "Condition", value = "Geom_mean", 1, 2)
+    type_wilc_res <- type_set_subset_gathered  %>%
+    wilcox_test(Geom_mean ~ Condition, paired = TRUE, alternative = "two.sided") %>%
+    add_significance()
+      
+    # Calculate the average log2 fold change and get the p-value
+    log_change <- mean(type_set_subset[,3])
+    pval <- type_wilc_res$p
+    
+    # Store the results in the current tissue type df
+    row <- data.frame(Tissue = tissue ,Set = col, avg_log2fc = log_change, p_val = pval)
+    tissue_summary <- rbind(tissue_summary, row)
+  }
+  
+  # Correct the p-values for multiple comparisons
+  tissue_summary <- tissue_summary %>%
+    mutate(adjusted_p = p.adjust(tissue_summary$p_val, method = "BH"))
+  
+  # Store the results in the complete tissue type df
+  assign(paste("df", tissue, sep = "_"),tissue_summary)
+  all_tissue_summary <- rbind(all_tissue_summary, tissue_summary)
+  
+  # Create the key values for the plot
+  keyvals <- ifelse(
+    tissue_summary$Set == "soi", "#D21717", "#4d63b2")
+  keyvals[is.na(keyvals)] <- 'black'
+  names(keyvals)[keyvals == '#D21717'] <- 'Set of Interest'
+  names(keyvals)[keyvals == '#4d63b2'] <- 'Control Set'
+  
+  # Create the volcano plot for the current tissue type
+  assign(paste("p", tissue, sep = "_"),
+         EnhancedVolcano(tissue_summary,
+                         lab = tissue_summary$Set,
+                         x = "avg_log2fc",
+                         y = "p_val",
+                         caption = "Number of sets: 548",
+                         selectLab = "None",
+                         title = "",
+                         subtitle = "",
+                         xlim = c(-1,1),
+                         colCustom = keyvals,
+                         colAlpha = 1,
+                         pCutoff = 0.01,
+                         FCcutoff = 0.2,
+                         pointSize = 4.5,
+                         cutoffLineType = "blank",
+                         cutoffLineCol = "black",
+                         legendPosition = "right",
+                         subtitleLabSize = 21,
+                         captionLabSize = 14,
+                         legendLabSize = 14,
+                         legendIconSize =4,
+                         axisLabSize = 15) + 
+           geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black", linewidth = 0.5))
+  
+  # Save the plot
+  pdf(paste("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Plots/RNA_Plots/RNA_Plts_Part_I/Sets Volcano Plots/", tissue, "_Volcano.pdf", sep = ""), width = 10, height = 8) 
+  print(get(paste("p", tissue, sep = "_")))
+  dev.off()
+}
+ 
+
+
+# Save the data to a csv file
+write.csv(all_tissue_summary, "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/RNA_data/Comparative_analysis_data/TCGA_cancer_specif_summary.csv", row.names = FALSE)
+
+```
+
+
+Create the combined plot of each volcano plots for all tissue type into a single plot
+highlighting the sets of interest 
+
+```{r}
+all_tissue_volcano <- EnhancedVolcano(all_tissue_summary,
+                lab = all_tissue_summary$Set,
+                x = "avg_log2fc",
+                y = "p_val",
+                selectLab = c('soi'),
+                xlim = c(min(all_tissue_summary$avg_log2fc),max(all_tissue_summary$avg_log2fc)),
+                drawConnectors = TRUE,
+                widthConnectors = 0.2,
+                pCutoff = 0.01,
+                FCcutoff = 0.1) 
+
+all_tissue_volcano
+```
+
+
+Create the combined volcano plot only using the select tumour types,
+highlighting the sets of interest  
+
+
+```{r}
+# Load the data
+all_tissue_summary <- read.csv("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/RNA_data/Comparative_analysis_data/TCGA_cancer_specif_summary.csv")
+
+# Select the tumour types to be used
+usable_tissues <- c("BRCA", "HNSC", "LUSC", "LUAD")
+
+# Subset the data for the selected tumour types
+usable_summary <- all_tissue_summary[all_tissue_summary$Tissue %in% usable_tissues,] %>% 
+  merge(meta_data, by.x = "Tissue", by.y = "Study.Abbreviation", all = FALSE) %>% 
+  dplyr::arrange(Set)
+
+# factorize the set column
+usable_summary$Set <- factor(usable_summary$Set, levels = c("soi", numbers_list))
+
+# Create the colour key values for the plot
+keyvals <- ifelse(
+  usable_summary$Set == "soi", "#D21717", "#4d63b2")
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#D21717'] <- 'Set of Interest'
+names(keyvals)[keyvals == '#4d63b2'] <- 'Control Set'
+
+# Create the size keyvals# Create the size keypals
+keyvals3 <- ifelse(
+  usable_summary$Set == "soi", 4.5, 2)
+
+usable_volcano_facet <- EnhancedVolcano(usable_summary,
+                                        lab = usable_summary$Set,
+                                        x = "avg_log2fc",
+                                        y = "p_val",
+                                        selectLab = "None",
+                                        title = "",
+                                        subtitle = "",
+                                        caption = "",
+                                        xlim = c(-0.5,0.65),
+                                        ylim = c(0, 9),
+                                        colCustom = keyvals,
+                                        pCutoff = 0.01,
+                                        colAlpha = 1,
+                                        FCcutoff = 0.2,
+                                        pointSize = keyvals3,
+                                        cutoffLineType = "blank",
+                                        cutoffLineCol = "black",
+                                        legendPosition = "top",
+                                        legendLabSize = 25,
+                                        legendIconSize = 6,
+                                        axisLabSize = 28) + 
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", color = "black", linewidth = 0.5) +
+  geom_vline(xintercept = 0, linetype = "solid", color = "black", linewidth = 0.5) +
+  facet_wrap(~Study.Name, ncol = 2, scales = "free")+
+  theme(
+    strip.text = element_text(size = 28)
+  )
+
+
+# Save the plot
+pdf("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Plots/RNA_Plots/RNA_Plts_Part_I/Sets Volcano Plots/Usable_Volcano.pdf", width = 25, height = 19) 
+print(usable_volcano_facet)
+dev.off()
+
+```
+
+
+
+
+

@@ -1,0 +1,155 @@
+---
+title: "CNV Gene Subset analysis"
+output: html_document
+date: "2024-01-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+Load the libraries
+```{r}
+library(dplyr)
+library(pheatmap)
+library(reshape2)
+library(tidyverse)
+library(ggplot2)
+library(ComplexHeatmap)
+library(circlize)
+library(tiff)
+library(cluster)
+``` 
+
+Load other options
+```{r}
+getOption("max.print")
+```
+
+
+1. Load the data
+```{r}
+first <- read.csv("Data/CNV_Data/Genes_of_Interest_CNV_Data_df.csv")
+
+print(head(first))
+```
+
+
+2. Sample the data 
+
+```{r}
+set.seed(123)
+
+
+Sample_data <- first[sample(1:10000, 5000),]
+print(head(Sample_data))
+```
+
+3. Select the numeric columns
+
+```{r}
+column_names <- colnames(Sample_data)[-1]
+cor_data <- Sample_data[,column_names]
+
+print(head(cor_data))
+```
+
+
+4. Compute the distances between the genes in the data
+
+```{r}
+# Pearson
+cnv_cor_pear <- cor(cor_data, method = "pearson")
+
+Pears_dist_matrix <- apply(cnv_cor_pear, MARGIN = c(1, 2), FUN = function(x) { 
+  result <- 1-x
+  return(result)})
+
+# Euclidean
+trans_data <- t(cor_data)
+Eucl_dist_matrix <- as.matrix(dist(trans_data))
+
+
+# print(Eucl_dist_matrix)
+
+```
+
+
+5. Create the clustered heatmaps of the relations with k-means clustering method
+
+```{r}
+n <- 2
+Pears_dist_plot <-Heatmap(Pears_dist_matrix,
+         rect_gp = gpar(col = "black", lwd = 0.05),
+        col = colorRamp2(c(0, 1, 2), c("#20c712", "white", "purple2")),
+        row_names_gp = gpar(fontsize = 2),
+        column_names_gp = gpar(fontsize = 2),
+        column_km = n,
+        column_km_repeats = 300
+        )
+
+print(Pears_dist_plot)
+
+Euc_dist_plot <-Heatmap(Eucl_dist_matrix, 
+         rect_gp = gpar(col = "black", lwd = 0.05),
+        col = colorRamp2(c(0, 1, 2), c("#20c712", "white", "purple2")),
+        row_names_gp = gpar(fontsize = 2),
+        column_names_gp = gpar(fontsize = 2),
+        column_km = n,
+        column_km_repeats = 300
+        )
+
+print(Euc_dist_plot)
+
+```
+
+
+
+
+6. 
+
+```{r}
+n <- 5
+
+# Calculate silhouette scores for different values of k
+silhouette_scores <- numeric(length = n - 1)  # Adjust the length
+
+for (k in 2:n) {  # Start from k=2
+  kmeans_model <- kmeans(cor_data, centers = k)
+  sil_score <- silhouette(kmeans_model$cluster, dist(cor_data))
+  silhouette_scores[k-1] <- mean(sil_score[, 3])  # Assuming you want the mean silhouette width
+}
+
+
+
+# Plot the silhouette method
+plot(2:n, silhouette_scores[2:n], type = "b", xlab = "Number of Clusters (k)", ylab = "Silhouette Score")
+
+```
+
+
+
+
+```{r}
+n <- 5
+
+# Calculate silhouette scores for different values of k
+silhouette_scores <- numeric(length = n - 1)  # Adjust the length
+
+for (k in 2:n) {  # Start from k=2
+  kmeans_model <- kmeans(cor_data, centers = k)
+  
+  sil_score <- silhouette(kmeans_model$cluster, as.dist(1 - cor(trans_data)))
+  silhouette_scores[k-1] <- mean(sil_score[, 3])  # Assuming you want the mean silhouette width
+}
+
+
+
+# Plot the silhouette method
+plot(2:n, silhouette_scores[2:n], type = "b", xlab = "Number of Clusters (k)", ylab = "Silhouette Score")
+```
+
+
+
+
+
+

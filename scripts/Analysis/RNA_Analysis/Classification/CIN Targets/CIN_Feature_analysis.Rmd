@@ -1,0 +1,115 @@
+---
+  title: "TCGA_CIN_FEATURES"
+format: html
+editor: visual
+Notes: This script is intended to do some exploration of the samples in the CIN Features in the TCGA PanCan datasets.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+## Load the libraries
+
+## Load the libraries
+
+```{r}
+library(dplyr)
+library(textshape)
+```
+
+Re-usable functions
+
+```{r}
+extract_element <- function(strings, index) {
+  # Split each string by "." and extract the third element
+  element_list <- sapply(stringr::str_split(strings, "\\-"),
+                         function(x) x[index])
+  return(element_list)
+}
+```
+
+Import data
+
+```{r}
+ori_hrd <- read_tsv("Data/CIN_Features/TCGA.HRD_withSampleID.txt")
+ori_arm_cnv <- read_tsv("Data/CIN_Features/CNV_Data/PANCAN_ArmCallsAndAneuploidyScore_092817.txt")
+peri_cnv <- read.csv("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/CIN_Features/CNV_Data/TCGA_pericentro_cnv.csv")
+
+# Metadata
+tss_meta <- read.csv("Data/Other/TCGA_meta/tissueSourceSite.tsv", sep = "\t")
+abbrv_meta <- read.csv("Data/Other/TCGA_meta/bcrBatchCode.tsv", sep = "\t")
+
+# Combine the metadata
+meta <- left_join(tss_meta %>% 
+                     dplyr::select(c("TSS.Code", "Study.Name")) %>% 
+                     distinct() %>% 
+                     sapply(trimws) %>% 
+                     as.data.frame(),
+                   abbrv_meta %>%
+                     dplyr::select(c("Study.Abbreviation", "Study.Name")) %>% 
+                     distinct()%>% 
+                     sapply(trimws) %>% 
+                     as.data.frame(), 
+                   by = "Study.Name")
+```
+
+HRD SCORES
+
+```{r}
+t_hrd <- as.data.frame(t(ori_hrd)) 
+first_hrd <- t_hrd
+colnames(first_hrd) <- t_hrd[1, ]
+hrd <- as.data.frame(first_hrd[-1,]) 
+```
+
+ARM-LEVEL ANEUPLOIDIES
+
+```{r}
+# Replace the NAs with 0
+cvn_arm <- ori_arm_cnv %>% replace(is.na(.), 0)
+
+# Re-organise the columns 
+cnvs_arm <- cvn_arm %>%
+  column_to_rownames("Sample") %>% 
+  dplyr::select(-"Type")
+  
+```
+
+JOIN THE CIN-BASED FEATURES
+
+```{r}
+full_cin <- merge(
+  hrd,
+  cnvs_arm,
+  by = "row.names"
+)
+
+full_cin <- merge(
+  full_cin,
+  peri_cnv,
+  by.x = "Row.names",
+  by.y = "sampleID"
+) %>% 
+  column_to_rownames("Row.names"
+  )
+```
+
+
+
+EXPLORE THE DATA
+```{r}
+desc <- describe(full_cin)
+
+
+peri_desc <-describe(peri_cnv)
+
+
+
+
+```
+
+
+
+
+

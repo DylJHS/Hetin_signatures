@@ -1,0 +1,121 @@
+---
+title: "Cancer-specific hyperparam assessment"
+output: html_document
+date: "2024-07-01"
+Notes: "This is a file for the cancer-specific Regression Parameters Assessment, where the parameters (rna sets, depth) 
+of the features are assessed and the results are presented in a table and visualized."
+---
+
+```{r}
+library(dplyr)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir="/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+
+```{r}
+hyper_out_folder <- "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/Cancer_specific_data/Model_output/Hyperparameters/"
+hyper_in_folder <- "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/Cancer_specific_data/Model_input/Parameters/Hyperparameters/"
+
+for (cancer_folder in list.files(hyper_out_folder)){
+  cat(cancer_folder, "\n\n")
+  out_folder <- paste0(hyper_out_folder, cancer_folder, "/")
+  
+  if (!file.exists(paste0(hyper_in_folder, cancer_folder, "/cat_full_df.csv"))) {
+    cat_full_df <- data.frame()
+  } else {
+    cat_full_df <- read.csv(paste0(hyper_in_folder, cancer_folder, "/cat_full_df.csv"))
+    if (!"Seed" %in% colnames(cat_full_df)) {
+      cat_full_df <- add_column(cat_full_df, Seed = 99)}
+  }
+  if (!file.exists(paste0(hyper_in_folder, cancer_folder, "/reg_full_df.csv"))) {
+    reg_full_df <- data.frame()
+  } else {
+    reg_full_df <- read.csv(paste0(hyper_in_folder, cancer_folder, "/reg_full_df.csv"))
+    if (!"Seed" %in% colnames(reg_full_df)) {
+      reg_full_df <- add_column(reg_full_df, Seed = 99)}
+  }
+  
+  for (file in list.files(out_folder, pattern = "*.csv")){
+    # Check if the type of feature is categorical
+    Type = str_detect(file, "^\\d+")
+    
+    # Read the file
+    current_file <- read.csv(paste0(out_folder, file))
+    
+    if ("Learning_Rate" %in% colnames(current_file)) {
+      current_file <- current_file %>% rename("Eta" = Learning_Rate)}
+    if ("Depth" %in% colnames(current_file)) {
+      current_file <- current_file %>% rename("Max_depth" = Depth)}
+    if ("RNA_Set" %in% colnames(current_file)) {
+      current_file <- current_file %>% rename("RNA_set" = RNA_Set)}
+    if ("Weight_norm" %in% colnames(current_file)) {
+      current_file <- current_file %>% rename("Weight_normal" = Weight_norm)}
+    if (!"Seed" %in% colnames(current_file)) {
+    current_file <- add_column(current_file, Seed = 99)}
+    
+    # Merge the dataframes
+    if (Type == TRUE){
+      cat_full_df <- rbind(cat_full_df, current_file) %>% 
+        distinct() 
+    }
+    else{
+      reg_full_df <- rbind(reg_full_df, current_file) %>% 
+        filter(Feature != "HRD") %>% 
+        distinct()
+    }
+  }
+    
+    # Save the dataframes
+    write.csv(cat_full_df, paste0(hyper_in_folder, cancer_folder, "/cat_full_df.csv"), row.names = FALSE)
+    write.csv(reg_full_df, paste0(hyper_in_folder, cancer_folder, "/reg_full_df.csv"), row.names = FALSE)
+  
+  # Order the features
+  reg_order <- c("peri_1", "peri_2", "peri_3", "peri_4", "peri_5", "peri_7", "peri_8", "peri_9", "peri_10", "peri_16_1", "peri_16_2", "peri_17", "peri_20", "peri_22_3", "ai1", "loh_hrd", "lst1")
+
+  arm_order <- c("1p", "1q", "2p", "2q", "3p", "3q", "4p", "4q", "5p", "5q", "6p", "6q", "7p", "7q", "8p", "8q", "9p", "9q", "10p", "10q", "11p", "11q", "12p", "12q", "13q", "14q", "15q", "16p", "16q", "17p", "17q", "18p", "18q", "19p", "19q", "20p", "20q", "21q", "22q")
+
+
+  # Get the best hyperparameters for the features
+  best_reg_loss <- reg_full_df %>%
+    mutate(Feature = factor(Feature, levels = reg_order)) %>%
+    group_by(Feature) %>%
+    slice_min(Test_RMSE, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    arrange(Feature) %>%
+    as.data.frame() %>%
+    select(Feature, RNA_set, Trees, Max_depth, Eta, Gamma, Child_weight, everything())
+
+  best_cat_loss <- cat_full_df %>%
+    mutate(Feature = factor(Feature, levels = arm_order)) %>%
+    group_by(Feature) %>%
+    slice_min(Test_mlogloss, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+    arrange(Feature) %>%
+    as.data.frame() %>%
+    select(Feature, RNA_set, Trees, Max_depth, Eta, Gamma, Child_weight, everything())
+
+ 
+  # Save the best hyperparameters
+  save_folder <- "Data/Cancer_specific_data/Model_input/Parameters/Hyperparameters/"
+
+  write.csv(best_reg_loss, paste0(save_folder, cancer_folder ,"/Best_reg_loss.csv"), row.names = FALSE)
+  write.csv(best_cat_loss, paste0(save_folder, cancer_folder ,"/Best_cat_loss.csv"), row.names = FALSE)
+
+
+  # Save the final hyperparameters
+  final_best_reg_loss <- best_reg_loss %>%
+  select(Feature, RNA_set, Trees, Max_depth, Eta, Gamma, Child_weight) %>%
+  write.csv(paste0(save_folder, cancer_folder ,"/base_reg_hyperparams.csv"), row.names = FALSE)
+
+  final_best_cat_loss <- best_cat_loss %>%
+  select(Feature, RNA_set, Trees, Max_depth, Eta, Gamma, Child_weight, Weight_loss, Weight_normal, Weight_gain) %>%
+  write.csv(paste0(save_folder, cancer_folder ,"/base_cat_hyperparams.csv"), row.names = FALSE)
+}
+```

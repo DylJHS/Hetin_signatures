@@ -1,0 +1,9 @@
+.Rhistory
+.RData
+*.log
+data/
+results/
+Thesis/
+Presentations/
+figures/
+.Trashes/

@@ -1,0 +1,479 @@
+---
+title: "CNV_Analysis"
+output: html_document
+date: "2023-12-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Initial 
+
+Set the working directory. 
+
+```{r}
+setwd("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Scripts")
+
+```
+
+Load necessary libraries 
+
+```{r}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(ggpubr)
+library(rstatix)
+library(paletteer)
+library(ggrepel)
+```
+
+Load the CNV metrics dataset and remove the useless columns.
+
+```{r}
+data <- fread("../../../Data/CNV_Data/Full_CNV_metrics1.csv")
+```
+
+Add column for the difference between the means and same for the medians . 
+
+```{r}
+data[, ':=' ('Mean_diff' = Mean_set - Mean_cntrl, 'Median_diff' = Median_set - Median_cntrl)]
+```
+
+
+Part I. Inter-genomic CNV analysis
+
+Q1. 
+A) visualise the density plots of the CNV values for the SoI to assess its distribution
+
+```{r}
+ggplot(data, aes(x = Mean_set)) + 
+  geom_histogram(aes(y = after_stat(density)),
+                 colour = 1, 
+                 fill = "white", 
+                 bins = 50) +
+  geom_density(lwd = 1, colour = 1) +
+   labs(y = "Density", x = "Copy Number",
+       title = "Distribution of the Set-of-Interest to Control-Set \n Copy Number Differential Across Samples") +
+  theme(
+    axis.title = element_text(size = 13, color = "black", face = "bold"),
+    axis.text = element_text(color = "black", size = 10),
+    panel.background = element_rect(fill = "#EDEDED"),
+    plot.title = element_text(hjust = 0.5, size = 15),
+    panel.border = element_rect(fill = "transparent", color = 1, linewidth = 1),
+    panel.grid.major.y = element_line(color = "black", linewidth = 0.25, linetype = 1),
+    panel.grid.major.x = element_line(color = "black", linewidth = 0.25, linetype = 1),
+    panel.grid.minor.x = element_line(color = "black", linewidth = 0.1, linetype = 1),
+    panel.grid.minor.y = element_line(color = "black", linewidth = 0.1, linetype = 1),
+    plot.title.position = "plot"
+  )
+
+
+```
+
+
+
+B) Add QQplot of the difference between the mean CNV per set
+
+``` {r}
+ggplot(data, aes(sample= Mean_diff)) +
+  stat_qq() + 
+  stat_qq_line(color= "red") +
+  labs(title = "Normal QQ Plot for Analysis of the \n Average Copy Number Differential in Cancer Samples",
+       y = "Sample Quantiles",
+       x = "Theoretical Quantiles") +
+  theme(
+    axis.text.x = element_text(size= 8),
+    axis.title.x = element_text(size= 13),
+    axis.title.y = element_text(size= 13),
+    legend.title =element_text(hjust = 0.5,
+                               size = 11),
+    plot.title = element_text(hjust = 0.5,
+                              size = 14),
+    panel.grid.major = element_line(color = "black",
+                                    linewidth = 0.5,
+                                    linetype = 1),
+    panel.grid.minor = element_line(color = "black",
+                                    linewidth = 0.2,
+                                    linetype = 1),
+    panel.background = element_rect(fill = "#EDEDED"),
+    panel.border = element_rect(fill = "transparent",
+                                color = 1,
+                                linewidth = 2)
+  ) 
+```
+
+C) Add the Boxplot of the distribution of the differnece between the mean CNV per set
+
+``` {r}
+# Bxplt_CNV_Distr <- 
+
+ggplot(data, aes( y = Mean_diff, x = "")) + 
+  geom_boxplot(fill = "white",
+               outlier.colour = 2) +
+  stat_boxplot(geom = "errorbar") +
+  theme_minimal() +
+  labs(title = "Set-of-Interest to Control-Set \n Copy Number Differential in Cancer Samples Boxplot Analysis",
+       y = "Δ Copy Number") +
+  theme(
+        axis.text.x = element_text(angle= 90, 
+                                   size= 8),
+        axis.title.y = element_text(size= 13),
+        axis.title.x = element_blank(),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 14),
+        panel.background = element_rect(fill = "#EDEDED"),
+        panel.grid.major.y = element_line(color = "black", linewidth = 0.25, linetype = 2),
+        panel.border = element_rect(fill = "transparent",
+                                    color = 1,
+                                    linewidth = 2))
+```
+
+Interpretation: Both plots show a slight deviation from normal distribution with the histogram/density plot showing a higher peak than is typical in a normal distribution. And the QQplot demonstrates that the distribution deviates from a well defined normal distribution.
+
+
+D) Calculate the significance of the difference between the mean CNV of both sets using non-parametric method
+
+```{r}
+wlcx_paired_res = wilcox.test(data$Mean_set, data$Mean_cntrl, paired = TRUE)
+wlcx_paired_res_pval <- wlcx_paired_res$p.value
+```
+Interpretation: the p-value shows a significnat difference between the means of the paired sets
+
+E) Demonstrate difference between the gene sets in a comparative plot
+
+```{r}
+reshaped <- gather(data[,c("Mean_set","Mean_cntrl")], key = "Variable", value = "Value")
+```
+
+
+```{r}
+ggplot(reshaped, aes( y = Value, x = Variable, fill = Variable)) +
+  geom_boxplot(outlier.colour = 2) +
+  stat_boxplot(geom = "errorbar") +
+  theme_minimal() +
+  labs(title = "Distribution of the Mean Copy Number in \n the Set-of-Interest vs the Control-Set",
+       y = "CNV") +
+  scale_x_discrete(label = c("Control-Set", "Set-of-Interest")) +
+  scale_fill_hue(labels = c("Control-Set", "Set-of-Interest"))+
+  theme(
+        legend.position = "None",
+        axis.title.y = element_text(size= 13),
+        plot.subtitle = element_text(hjust= 0.5),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(size = 11),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 14),
+        panel.background = element_rect(fill = "#EDEDED"),
+        panel.grid.major.y = element_line(color = "black", size = 0.25, linetype = 2),
+        panel.border = element_rect(fill = "transparent",
+                                    color = 1,
+                                    linewidth = 2)) +
+  geom_text(aes(x = 1.5, 
+                 y = max(Value) - 0.02*max(Value),
+                 label = paste(c("P-value =", wlcx_paired_res_pval), collapse = " ")),
+                stat = "unique")
+
+```
+
+Q2. 
+A) Reorder the data 
+
+```{r}
+order_data <- setDF(data) %>% 
+  arrange( Median_diff) %>% 
+  mutate(Sample = factor(Sample, levels = unique(Sample)))
+```
+
+ B) Create a barplot of the samples vs their differences in the mean CNV values coloured by TSS.
+
+``` {r}
+ggplot(order_data, aes(x = Sample, y = Median_diff, fill = TSS_Abbrvs)) + 
+  geom_col() +
+  theme_minimal() +
+  ylim(c(-0.5, 0.5)) +
+  labs(y = "Δ Copy Number",
+       x = "Samples",
+       title = "Set-of-Interest to Control-Set Copy Number Differential by Sample ")+
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.y = element_text(size = 12), 
+    axis.text.y = element_text(size = 10),
+    axis.title.x = element_text(size = 14), 
+    legend.position = "right",
+    legend.text = element_text(size= 8),
+    legend.title =element_text(hjust = 0.5,
+                               size = 13),
+    plot.title = element_text(hjust = 0.2,
+                              size = 15),
+    plot.title.position = "plot",
+    panel.background = element_rect(fill = "#EDEDED"),
+    panel.grid.major.y = element_line(color = "black", size = 0.5, linetype = 2),
+    panel.grid.minor.y = element_line(color = "black", size = 0.25, linetype = 2),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.line = element_line(size = 0.35, linetype = "solid",
+                             colour = "black"),
+    panel.border = element_rect(fill = "transparent",
+                                color = 1,
+                                linewidth = 1)) +
+  guides(fill = guide_legend(ncol = 1, 
+                             title = "Source Tissue Type",
+                             title.position = "top")) 
+
+```
+
+ C) Create a barplot of the samples vs their differences in the mean 
+ log2 CNV values coloured by Hist
+ 
+ 
+```{r}
+ggplot(order_data, aes(x = Sample, y = Median_diff, fill = Hist_group)) + 
+  geom_col() +
+  theme_minimal() +
+  ylim(c(-0.5, 0.5)) +
+   labs(y = "Δ Copy Number",
+       x = "Samples",
+       title = "Set-of-Interest to Control-Set \n Copy Number Differential by Sample ")+
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.y = element_text(size = 14), 
+    axis.text.y = element_text(size = 11),
+    axis.title.x = element_text(size = 14), 
+    legend.position = "right",
+    legend.text = element_text(size= 11),
+    legend.title =element_text(hjust = 0.5,
+                               size = 13),
+    plot.title = element_text(hjust = 0.3,
+                              size = 18),
+    plot.title.position = "plot",
+    panel.background = element_rect(fill = "#EDEDED"),
+    panel.grid.major.y = element_line(color = "black", size = 0.5, linetype = 2),
+    panel.grid.minor.y = element_line(color = "black", size = 0.25, linetype = 2),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.line = element_line(size = 0.35, linetype = "solid",
+                             colour = "black"),
+    panel.border = element_rect(fill = "transparent",
+                                color = 1,
+                                linewidth = 1)) +
+  guides(fill = guide_legend(ncol = 1, 
+                             title = "Histology Grouping",
+                             title.position = "top"))
+```
+
+Q1 & Q2. 
+
+A) Create the functions that are going to perform the paired 
+t-test for each cancer type on the mean and the median stats.
+
+Function create a df that calculates the mean difference over the provided set and applies a Wilcoxon signed-rank test  returning mean difference as well as the p-value.
+
+```{r}
+perform_mean_test <- function(data) {
+  test_result <- wilcox.test(data$Mean_set, data$Mean_cntrl, paired = TRUE)
+  return(data.frame(mean_diff = mean(data$Mean_set - data$Mean_cntrl),
+                    p_value = test_result$p.value))
+}
+```
+
+B) Applies the "perform_mean_test" function seperately on each TSS group.
+ 
+```{r}
+mean_results <- data %>%
+  group_by(TSS_Abbrvs, Hist_group) %>%
+  filter(n() > 1 & !is.na(Mean_set) & !is.na(Mean_cntrl)) %>%
+  do(perform_mean_test(.))
+```
+
+
+C) Correct the p-values due to mutliple testing using the Benjamini-Hochberg method for FDR.
+
+```{r}
+results_mean <- mean_results %>%
+  mutate(p_adjusted = p.adjust(p_value, method = "BH")) 
+```
+
+
+D) Replace p-values with a value of 0 with a very small number to avoid
+ downstream errors that would occur when applying log transformations.
+
+```{r}
+min_nonzero_p <- min(results_mean$p_adjusted[results_mean$p_adjusted > 0])
+results_mean$p_value_adjusted <- ifelse(results_mean$p_adjusted == 0, min_nonzero_p, results_mean$p_adjusted)
+```
+
+
+E) Apply a -log10 transformation to the p-values for readability on graphs.
+
+```{r}
+results_mean$neg_log_pvalue <- -log10(results_mean$p_value_adjusted)
+```
+
+
+F) Sort by Histology group for readability/interpretation of graph and legend.
+
+```{r}
+results_mean_complete <- results_mean %>% arrange(Hist_group) 
+unique_tss <- unique(results_mean_complete$TSS_Abbrvs)
+results_mean_complete$TSS <- factor(results_mean_complete$TSS_Abbrvs, levels = unique_tss)
+```
+
+
+G) Add significance threshold.
+
+```{r}
+threshold <- -log10(0.01)
+```
+
+
+H) Create dot plot of each TSS group, based on mean differential expression vs. p-value.
+
+```{r}
+
+options(ggrepel.max.overlaps = Inf)
+
+ggplot(results_mean_complete, aes(x = mean_diff, y = neg_log_pvalue, fill = TSS_Abbrvs)) +
+  geom_point(size = 5, shape = 21, stroke = 1) +
+  geom_hline(yintercept = threshold, linetype = "dashed", color = "red") +
+  geom_text(aes(x = min(mean_diff) - 0.1*min(mean_diff), y = threshold, label = ""), color = "red") +
+  theme_minimal() +
+  labs(title = "Comparative Analysis of Average Copy Number Differential between Set-of-Interest and Control Set", 
+       x = "Average Copy Number Differential", 
+       y = "Adjusted P-Value (-log10)") +
+  theme(legend.position = "None",
+        legend.text = element_blank(),
+        axis.title = element_text(size = 14),
+        legend.title =element_text(hjust = 0.5,
+                                   size = 10),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 16),
+        panel.grid.major = element_line(color = "black",
+                                        linewidth = 0.5,
+                                        linetype = 1),
+        panel.grid.minor = element_line(color = "black",
+                                        linewidth = 0.2,
+                                        linetype = 1),
+        panel.background = element_rect(fill = "#EDEDED"),
+        panel.border = element_rect(fill = "transparent",
+                                    color = 1,
+                                    linewidth = 2)) +
+  scale_color_discrete(name = "Histology Group") + 
+  geom_text_repel(aes(label = TSS_Abbrvs), size = 3, box.padding = 0.7)
+```
+
+
+
+Part II. Intra-Gene-set & inter-cancer type expression analysis
+
+
+Reorder the data based on the histology group for readability
+ and interpretation of graph and legend.
+
+```{r}
+data_complete <- data %>% arrange(Hist_group) 
+unique_Abbrvs <- unique(data_complete$TSS_Abbrvs)
+data_complete$TSS_Abbrvs <- factor(data_complete$TSS_Abbrvs, levels = unique_Abbrvs)
+```
+
+
+ Q1. 
+ A) Boxplot showing the various distributions of CNV for each cancer type.
+
+```{r}
+ggplot(data_complete, aes(x = TSS_Abbrvs, y = Mean_set, fill = Hist_group)) + 
+  geom_boxplot() +
+  stat_boxplot(geom = "errorbar") +
+  theme_minimal() +
+  labs(title = "Average Gene-set Expression by Source Tissue Type",
+       y = "Log2 Expression",
+       fill = "Histology Group") +
+  theme(legend.position = "right",
+        legend.text = element_text(size= 7),
+        axis.text.x = element_text(angle= 90, 
+                                   size= 8),
+        axis.title.x = element_blank(),
+        legend.title =element_text(hjust = 0.5,
+                                   size = 11),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 14),
+        panel.grid.major = element_line(color = "black",
+                                        linewidth = 0.5,
+                                        linetype = 1),
+        panel.grid.minor = element_line(color = "black",
+                                        linewidth = 0.2,
+                                        linetype = 1),
+        panel.background = element_rect(fill = "#EDEDED"),
+        panel.border = element_rect(fill = "transparent",
+                                    color = 1,
+                                    linewidth = 2)) 
+
+```
+
+B) For the ANOVA test between the groups means, first need to test for: Normality of data within each group
+
+```{r}
+ggplot(data_complete, aes(x = Mean_set, fill = TSS_Abbrvs)) + 
+  geom_histogram(alpha = 0.3, position = "identity") +
+  theme_minimal() +
+  labs(title = "Histogram of Gene-set Expression by Source Tissue Type",
+       y = "Log2 Expression",
+       fill = "TSS") +
+  theme(legend.position = "right",
+        legend.text = element_text(size= 7),
+        axis.text.x = element_text(size= 8),
+        legend.title =element_text(hjust = 0.5,
+                                   size = 11),
+        plot.title = element_text(hjust = 0.5,
+                                  size = 14),
+        panel.grid.major = element_line(color = "black",
+                                        linewidth = 0.5,
+                                        linetype = 1),
+        panel.grid.minor = element_line(color = "black",
+                                        linewidth = 0.2,
+                                        linetype = 1),
+        panel.background = element_rect(fill = "FFFFF0"),
+        panel.border = element_rect(fill = "transparent",
+                                    color = 1,
+                                    linewidth = 2)) 
+```
+
+
+```{r}
+dont_know <- ggplot(data_complete, aes(sample= Mean_set, color = TSS)) +
+  stat_qq() + 
+  stat_qq_line() +
+  facet_wrap(~TSS) + 
+  theme(
+    legend.position = "right",
+    legend.text = element_text(size= 7),
+    axis.text.x = element_text(size= 8),
+    legend.title =element_text(hjust = 0.5,
+                               size = 11),
+    plot.title = element_text(hjust = 0.5,
+                              size = 14),
+    panel.grid.major = element_line(color = "black",
+                                    linewidth = 0.5,
+                                    linetype = 1),
+    panel.grid.minor = element_line(color = "black",
+                                    linewidth = 0.2, 
+                                    linetype = 1),
+    panel.background = element_rect(fill = "FFFFF0"),
+    panel.border = element_rect(fill = "transparent",
+                                color = 1,
+                                linewidth = 2)
+    ) 
+```
+
+ 2) Homoscedasticity of data within each group 
+
+
+
+
+
+
+
+
+
+
+

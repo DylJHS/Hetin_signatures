@@ -1,0 +1,4 @@
+Things to consider: 
+- using CENPA localisation as defining section for the centromeres
+- condisering other histone and protein binding regions for defining regions of pericentromeric regions
+- Think about the localisation of the telomeric regions

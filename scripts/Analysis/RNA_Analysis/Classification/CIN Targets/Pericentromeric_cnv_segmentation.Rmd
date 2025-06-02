@@ -1,0 +1,182 @@
+---
+title: "Pericentromeric Segmentation"
+output: html_document
+date: "2024-06-01"
+Notes: The script processes segmented copy number variation data to delineate pericentromeric regions, amalgamating contiguous segments and assessing copy number alterations within these regions.
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project")
+```
+
+## Load the libraries
+
+```{r}
+library(dplyr)
+library(rtracklayer)
+library(tidyverse)
+```
+
+Import the data
+```{r}
+ori_segmnt_cnv <- read_tsv("Data/CIN_Features/CNV_Data/Chrom_seg_CNV.txt")
+all_segs <- import("/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Raw_Data/Other/censat.bb") %>% as.data.frame()
+```
+
+
+Create the pericentromeric regions by combining the adjacent gbh (gamma, beta, HSat satellite) regions which can be gaped by centromeric transition (ct) regions and selecting the longest contiguous pericentromeric region as well as any additional pericentromeric ranges that are beyond a certain threshold
+
+```{r}
+# from the T2T data select the ranges for the annotations of satellites that correspond to pericentromeric sats 
+
+cgbh_segs <- all_segs %>% 
+  filter(!(grepl("^hor.*L\\)$", name)) &
+           !(grepl("rDNA", name))) %>% 
+  dplyr::select(c("seqnames","start", "end", "width", "name")) %>% 
+  arrange(seqnames, start)
+
+# Combine the adjacent ranges
+comb_cgbh <- cgbh_segs %>%
+  group_by(seqnames) %>%
+  arrange(start) %>%
+  mutate(end_next = lead(start),
+         combined = ifelse(end == end_next & !is.na(end_next), TRUE, FALSE),
+         combined_group = 0) %>% 
+  dplyr::select(-"end_next") %>% 
+  arrange(seqnames, start )
+
+cgbh_subset <- comb_cgbh %>%
+  group_by(seqnames) %>%
+  mutate(first_hsat = cummax(grepl("hsat", name)),
+         last_hsat = rev(cummax(rev(grepl("hsat", name))))) %>%
+  filter((first_hsat == 1) & (last_hsat == 1)) %>%
+  dplyr::select(-c("first_hsat","last_hsat")) %>%
+  ungroup()
+
+for (i in 2:nrow(cgbh_subset)) {
+  cgbh_subset$combined_group[i] <- ifelse(
+    cgbh_subset$combined[i - 1],
+    cgbh_subset$combined_group[i - 1],
+    cgbh_subset$combined_group[i - 1] + 1
+  )
+}
+
+# Ensuring that the resulting combined regions start and end with HSat regions
+adj_cgbh <- cgbh_subset %>%
+  group_by(seqnames, combined_group) %>%
+  mutate(first_hsat = cummax(grepl("hsat", name)),
+         last_hsat = rev(cummax(rev(grepl("hsat", name))))) %>% 
+  filter((first_hsat == 1) & (last_hsat == 1)) %>%
+  dplyr::select(-c("first_hsat","last_hsat")) %>%
+  summarise(start_bp = dplyr::first(start),
+            end_bp = last(end),
+            width_Mb = round(sum(width)/(1E6),4),
+            name = paste(name, collapse = ", ")) %>%
+  dplyr::select(-c("combined_group"))
+
+final_cgbh <- adj_cgbh %>% 
+  group_by(seqnames) %>%
+  filter((width_Mb == max(width_Mb)) | (width_Mb >= 1)) %>%
+  mutate(
+    peri_id = case_when(
+      n() > 1 ~ paste0("peri_", substring(as.character(seqnames), 4, nchar(as.character(seqnames))), "_", row_number()),
+      TRUE ~ paste0("peri_", substring(as.character(seqnames), 4, nchar(as.character(seqnames))))),
+      seqnames = substring(as.character(seqnames), 4, nchar(as.character(seqnames)))
+    ) %>% 
+  rename(seqnames = "chromosome") %>% 
+  dplyr::select(peri_id,chromosome, everything())
+  
+print(final_cgbh)
+
+# write.csv(final_cgbh,"/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/Other/alpha_incl_all_pericentro_meta.csv", row.names = FALSE)
+```
+
+
+
+Length-limited Alpha Included conclusion: the above yields 25 pericentromeric regions across all chromosomes. The chromosomes that do not have any pericentromeric regions assigned to them include chromosomes 6,11, 12, 18 & 19, which seems to add up with what is seen in the genome viewer as well as what has been reported by Altmose (2022). The chromosomes which display more than a single elongated pericentromeric region include chromosomes:
+- 13 with 2
+- 15 with 2
+- 16 with 2
+- 21 with 2
+- 22 with 3
+- Y with 2
+
+
+
+
+V. Reconfigure the segmented copy number data in terms of the newly defined pericentromeric data
+```{r}
+cnv_long <- data.frame()
+for (chrm in unique(ori_segmnt_cnv$chr)){ # Loop over the chromosomes that have pericentromeric regions
+  if (!chrm %in% final_cgbh$chromosome){
+    next
+  } else {
+    check_sub <- final_cgbh %>% 
+      filter(chromosome == chrm)
+    seg_sub <- ori_segmnt_cnv %>%
+      filter(chr == chrm) %>%
+      expand_grid(check_sub) %>%
+      filter(
+        (start >= start_bp & start < end_bp) |
+          (end > start_bp & end <= end_bp) |
+          (start <= start_bp & end >= end_bp)
+      ) %>%
+      mutate( # Calculate the overlap betweent the cnv segments and pericentromeric regions
+        overlap_start = pmax(start, start_bp),
+        overlap_end = pmin(end, end_bp),
+        overlap_length = overlap_end - overlap_start,
+        check_sub_length = end_bp - start_bp,
+        overlap_proportion = overlap_length / check_sub_length
+      ) %>%
+      group_by(peri_id, sampleID) %>% 
+      summarise( # Calculate overlap-weighted mean copy number for each sample's pericentromeric range
+        cnv = round(sum(value * overlap_proportion) / sum(overlap_proportion),4),
+        overlap_segs = n(),
+        mean_overlap = mean(overlap_proportion),
+        .groups = 'drop'  # This option removes the grouping structure after summation
+      ) %>% 
+      dplyr::select(sampleID, peri_id, cnv, mean_overlap ,overlap_segs)
+  }
+  cnv_long <- rbind(cnv_long, seg_sub)
+}
+
+
+# Distribution of the number of cnv segments (overlap_segs) that get mapped (overlap) to each pericentromeric region across all samples. Most overlap to only 1 segment. 
+
+sample_count_frequencies <- cnv_long %>%
+  group_by(overlap_segs) %>%
+  summarise(number = n(), 
+            ,.groups = 'drop') %>%
+  mutate(pcnt =paste0( round(number/sum(.$number)*100,3),"%"))
+
+
+```
+
+Restructure the data to get the desired output:
+The average cnv value that is present within each pericentromeric region (columns)
+across all samples (rows)
+
+```{r}
+
+cnv_reformat <- pivot_wider(cnv_long %>% 
+                              dplyr::select(sampleID, peri_id, cnv),
+                            names_from = peri_id, values_from = cnv)
+cnv_reformat[is.na(cnv_reformat)] <- 0
+  
+
+# write.csv(cnv_reformat, "/Users/Dyll/Documents/Education/VU_UVA/Internship/Epigenetics/Janssen_Group-UMCUtrecht/Main_Project/Data/CIN_Features/CNV_Data/unlim_alpha_incl_TCGA_pericentro_cnv.csv", 
+#           row.names = FALSE)
+```
+
+Length-limited alpha included CNV mapped conclusion: 
+- 14 regions are able to get mapped to certain cnvs that are present in the data
+
+
+
+
+
+
+
+
+
+
