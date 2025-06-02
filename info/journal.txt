@@ -1,0 +1,8 @@
+02/06/25
+- Downlaoding and loading the data adn scripts onto local machine
+- Going to look at the following cancer types: 
+    - Head and Neck Squamous Cell Carcinoma
+    - Lung Adenocarcinoma
+    - Lung Squamous Cell Carcinoma
+    - Breast Invasive Carcinoma
+    
