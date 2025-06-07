@@ -1,0 +1,34 @@
+Feature importance ideas: 
+
+1) Gain is Invalid
+- But having removed the co-located genes from the feature importance output
+- Still has a relevant metric 
+- Unfortunetly the metric is NOT CONSISTENT (Whenever a model is changed such that it relies more on a feature, then the attributed importance for that feature should not decrease)
+
+2) LOFO 
+- Gold-standard
+- very consistent
+- likely a very good interpretability and accuracy
+- Highly intensive as involves retraining while leaving out each feature in an interative manner
+- Might be implementable if interactome genes are reduced to groups based on colinearity (PCA) before training
+- Could be used as a validation method after using SHAP of the (top) output gene(s) which would reduce the computational effort needed
+- Might also be benefecial to only run on top genes for predictions that exceeded a certian performance score (accuracy, f1, ...)
+- High LOFO means the loss of that feature was detremental
+- Very costly (computational and time)
+- Interactions between features is not really an issue
+
+3) SHAP
+- easier than LOFO
+- can be individualised (broken down to each smaple)
+- can use first and follow up on top results with LOFO
+
+4) Permutation Importance
+- consistent
+- Faster than LOFO (no retraining needed)
+- sensitive to interactions and colinearity of the features (need to cluster genes prior to running)
+
+
+5) The UGT is not a sound metric
+- has not been normalised (sum of gains > 1)
+- Even normalising each gene gain does nothing to mitigate the biased nature of how Gain is assessed
+- 

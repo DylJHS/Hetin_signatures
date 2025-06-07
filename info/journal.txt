@@ -6,3 +6,34 @@
     - Lung Squamous Cell Carcinoma
     - Breast Invasive Carcinoma
     
+	
+03/06/25
+- Reading up on the interpretable metrics for ML models
+- Want to know if SHAP is a good alternative to the Gain metrics
+
+- Need to remove the genes that show up as the top contributor for target aberrant features already related to that gene
+- If the gene is located on a chromosome arm that is lost then it's importance is nonsensical
+- However this brings up if the training data should be edited in some fashion to prevent training with genes linked to the target feature
+- To remove the genes from the feature importance graph that are located on the same target feature, I need: 
+	- To create/download df with genomic position of each gene in the full interactome
+	- Gene, Chromosome & Arm as columns
+	- For each feature importance results csv file (56), reduce the results to only include genes that are not on that feaures
+	
+	
+04/06/25
+- Reading up on the SHAP values
+- On interpretable AI methods
+- Several metrics can be used to assess the feautre importance (Gain/Gini, Cover, LOFO, Permutation importance, SHAP...) but should be selected based on their consistency 
+- Coming up with a plan to best interpret the gene importances
+- Thinking about using a fast but comprehensive method (TreeSHAP)followed up with a validation of the results using a deeper method (LOFO) 
+- Clustering colinear genes prior to the training of the model might still be beneficial in increasing the runspeed, also remving colinear affects can enable the use of Permuation importance instead of LOFO
+
+05/06/25
+- Wrote note word doc (XGBoost Feature Importance Metrics) on the Feature importance metrics and their advantages and disadvantages in terms of the project
+- Downlaoding the Homo_sapiens.GRCh38.114.chr.gtf.gz to use as the gene annotation df
+- Created the df for referencing the genes and their chromosome location 
+- Created a smaller one for only the genes of interest
+
+06/06/25
+- Finished looping over the different cancer types and base layer feature importance results removing genes which are located on the same chromosome for aneuploidy target features
+- Need to combine the results from all Targets into a single df

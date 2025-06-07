@@ -1,0 +1,8 @@
+Project presentation notes
+
+- Bottom up approach due to change anywhere will have downstream affects that will be hard to untangle, and difficult to assess if the change was beneficial or not
+- Changes to how the results are delivered visualised and assessed
+- Via the heatmap from dropping genes that are linked to aneuploidies on the same chromosomes. Method is highly consistent since uses the exact same output dataset and no retraining or anything. 
+- Consistency in field of ML (xAI), interpretability of ML models and the decisions they make. Not always important (movie recommendaiton) but at times crucial (500k€ mortgage application for AMS apartment) and here for the project
+- Project is dependent on the explainability of its predictions! model predicts the CIN feature based on gene interactome but objective of the project is to identify the genes with the deepest impact on the predictions 
+- Without consistent metrics unable to truly trust the importance of certain genes or compare between models, learners or even iterations of the same learner

@@ -1,0 +1,122 @@
+---
+title: "Gene_Importance_modification"
+output: html_document
+date: "2025-06-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "D:/projects/HetIN_signatures/")
+```
+
+
+Load the packages
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(rtracklayer)
+library(GenomicRanges)
+
+```
+
+```{r}
+# Define the cancer types
+can_types <- c("BRCA", "LUAD", "LUSC", "HNSC")
+
+# folder with the feature importance files
+feat_imp_folder_pre <- "data/Cancer_specific_data/Model_output"
+feat_imp_folder_post <- "Results/Feature_importance/Base_feat_imp"
+
+
+# Load the gene annotations 
+gene_annotations <- read.csv("data/secondary_data/gene_annotations.csv", stringsAsFactors = FALSE, row.names = NULL)
+
+# Load the gene_set genes
+gene_set_genes <- read.csv("data/secondary_data/Gene_set.csv", stringsAsFactors = FALSE)
+gene_set <- colnames(gene_set_genes)
+rm(gene_set_genes)
+```
+
+```{r}
+# reduce the gene annotations to the genes that are in the set of interest
+gene_annotations <- gene_annotations %>%
+  filter(gene_name %in% gene_set)
+```
+
+
+```{r}
+for (cancer in can_types) {
+  cat("\n\n\n", cancer)
+  
+  folder <- file.path(feat_imp_folder_pre, cancer, feat_imp_folder_post)
+  # cat(paste0("\n\n\n", folder))
+  
+  full_df <- data.frame()
+  
+  for (file in list.files(folder, full.names = TRUE)) {
+      # cat("\n\n", file)
+      
+      # Get the feauture from the name
+      file_name <- basename(file)
+      target_feat <- str_split(file_name, "_")[[1]][1]
+      # cat("\n\n Target_feat: ", target_feat)
+      
+      # Check if the feature is an aneuploidy (ends with q or p)
+      if (substr(target_feat, nchar(target_feat), nchar(target_feat)) %in% c("q", "p")) {
+        cat("\n Target_feat is an aneuploidy: ", target_feat)
+        
+        chrom <-gsub("[^0-9]", "", target_feat) %>% as.character()
+        # cat("\n Chromosome: ", chr)
+        
+        # Read the CSV file
+        df <- read.csv(file, stringsAsFactors = FALSE, row.names = NULL) %>% 
+          select(-X)
+        
+        # Join the dfs
+        df <- df %>%
+          left_join(
+            gene_annotations %>% 
+              select(c("gene_name", "seqnames")), 
+            by = c("Feature" = "gene_name")
+            ) %>%
+          rename(
+            "seqnames" = "Chr"
+          )
+        
+        # Resave the originial with the chr col
+        ori_df_name <- paste0(folder, "/ori_", file_name)
+        # write.csv(df, ori_df_name, row.names = FALSE)
+        
+        # Filter the DF
+        df <- df %>% 
+          filter(
+            Chr != chrom
+          )
+        
+        # Save the modified dataframe
+        df_name <- paste0(folder, "/mod_", file_name)
+        # cat("\n", df_name)
+        # write.csv(df, df_name, row.names = FALSE)
+        
+        # Add target feature col and append to full df
+        df <- df %>% 
+          mutate(
+            "Target" = target_feat
+          )
+        
+        full_df <- rbind(full_df, df)
+        
+      } 
+      else if (target_feat %in% c("mod","ori")) {
+        next
+      }
+      else {
+        cat("\n Feature is not an aneuploidy: ", target_feat)
+      }
+  }
+}
+```
+
+
+
+
