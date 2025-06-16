@@ -47,16 +47,17 @@ gene_annotations <- gene_annotations %>%
 for (cancer in can_types) {
   cat("\n\n\n", cancer)
   
-  folder <- file.path(feat_imp_folder_pre, cancer, feat_imp_folder_post)
-  # cat(paste0("\n\n\n", folder))
+  feat_imp_folder <- file.path(feat_imp_folder_pre, cancer, feat_imp_folder_post)
+  # cat(paste0("\n\n\n", feat_imp_folder))
   
-  full_df <- data.frame()
+  cancer_type_imp_df <- data.frame()
   
-  for (file in list.files(folder, full.names = TRUE)) {
-      # cat("\n\n", file)
+  # Loop through each feature importance files in the folder
+  for (feature_file in list.files(feat_imp_folder, full.names = TRUE)) {
+      # cat("\n\n", feature_file)
       
-      # Get the feauture from the name
-      file_name <- basename(file)
+      # Get the feature from the name
+      file_name <- basename(feature_file)
       target_feat <- str_split(file_name, "_")[[1]][1]
       # cat("\n\n Target_feat: ", target_feat)
       
@@ -64,46 +65,53 @@ for (cancer in can_types) {
       if (substr(target_feat, nchar(target_feat), nchar(target_feat)) %in% c("q", "p")) {
         cat("\n Target_feat is an aneuploidy: ", target_feat)
         
-        chrom <-gsub("[^0-9]", "", target_feat) %>% as.character()
-        # cat("\n Chromosome: ", chr)
+        feature_chrom <-gsub("[^0-9]", "", target_feat) %>% as.character()
+        feature_arm <- substr(target_feat, nchar(target_feat), nchar(target_feat))
+        cat("\n Chromosome: ", feature_chrom)
         
         # Read the CSV file
-        df <- read.csv(file, stringsAsFactors = FALSE, row.names = NULL) %>% 
+        feature_df <- read.csv(feature_file, stringsAsFactors = FALSE, row.names = NULL) %>% 
           select(-X)
         
         # Join the dfs
-        df <- df %>%
+        feat_joind_df <- feature_df %>%
           left_join(
             gene_annotations %>% 
-              select(c("gene_name", "seqnames")), 
+              select(c("gene_name", "seqnames", "arm")), 
             by = c("Feature" = "gene_name")
             ) %>%
           rename(
-            "seqnames" = "Chr"
+            "Chr" = "seqnames",
+            "Arm" = "arm"
+          ) %>% 
+          mutate(
+            chrm_arm = paste0(Chr, Arm)
           )
         
         # Resave the originial with the chr col
-        ori_df_name <- paste0(folder, "/ori_", file_name)
-        # write.csv(df, ori_df_name, row.names = FALSE)
+        ori_df_name <- paste0(feat_imp_folder, "/ori_", file_name)
+        # write.csv(feat_joind_df, ori_df_name, row.names = FALSE)
         
         # Filter the DF
-        df <- df %>% 
+        filt_feat_joind_df <- feat_joind_df %>% 
           filter(
-            Chr != chrom
+            chrm_arm != target_feat,
+            is.na(Chr) == FALSE,
+            is.na(Arm) == FALSE
           )
         
         # Save the modified dataframe
-        df_name <- paste0(folder, "/mod_", file_name)
+        df_name <- paste0(feat_imp_folder, "/mod_", file_name)
         # cat("\n", df_name)
-        # write.csv(df, df_name, row.names = FALSE)
+        # write.csv(filt_feat_joind_df, df_name, row.names = FALSE)
         
         # Add target feature col and append to full df
-        df <- df %>% 
+        mod_feat_df <- filt_feat_joind_df %>% 
           mutate(
             "Target" = target_feat
           )
         
-        full_df <- rbind(full_df, df)
+        cancer_type_imp_df <- rbind(cancer_type_imp_df, mod_feat_df)
         
       } 
       else if (target_feat %in% c("mod","ori")) {
