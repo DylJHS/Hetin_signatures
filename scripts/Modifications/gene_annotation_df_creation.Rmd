@@ -1,0 +1,134 @@
+---
+title: "gene_annotation_df_creation"
+output: html_document
+date: "2025-06-11"
+note: "This script serves to create a gene annotation data frame that includes the chromosome and arm information for each gene. The data is derived from a GTF file and centromere locations."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "D:/projects/HetIN_signatures/")
+```
+
+```{r}
+library(dplyr)
+library(rtracklayer)
+library(GenomicRanges)
+library(readr)
+```
+
+
+```{r}
+# Load the gene annotation data
+gene_file <- "data/secondary_data/Homo_sapiens_GRCh38_114_chr.gtf"
+gene_gtf <- import(gene_file)
+```
+
+
+```{r}
+# Load the centromere data
+cent_file <- "data/secondary_data/centromeres.txt"
+cent_data <- read_tsv(cent_file, col_names = FALSE, col_select = -c(1, 5)) %>% 
+  rename(
+    seqnames = X2,
+    start = X3,
+    end = X4
+  ) 
+red_cent <- cent_data %>% 
+  group_by(seqnames) %>% 
+  summarise(
+    start = min(start),
+    end = max(end),
+    .groups = "drop" 
+  ) %>% 
+  mutate(
+    type = "centromere",
+    seqnames = gsub("chr", "", seqnames)
+  )
+
+centro_gr <- GRanges(
+  seqnames = red_cent$seqnames,
+  ranges = IRanges(start = red_cent$start, end = red_cent$end),
+  type = red_cent$type
+)
+
+```
+
+
+```{r}
+# Remove the non-protein coding genes
+gene_gtf <- gene_gtf[gene_gtf$gene_biotype == "protein_coding" & gene_gtf@seqnames != "MT"]
+
+# split the gene annotation df by gene_name
+split_gene <- split(gene_gtf, gene_gtf$gene_name)
+
+# combine the ranges for the same gene
+red_gene <- GenomicRanges::reduce(split_gene)
+
+# get the gene_names back
+flat_gene <- unlist(red_gene)
+flat_gene$gene_name <- rep(names(red_gene), elementNROWS(red_gene))
+```
+
+
+```{r}
+# Extract start and end for genes
+flat_starts <- start(flat_gene)
+flat_ends <- end(flat_gene)
+flat_chrs <- as.character(seqnames(flat_gene))
+
+# Build lookup vectors for centromere boundaries
+centro_start <- setNames(start(centro_gr), as.character(seqnames(centro_gr)))
+centro_end   <- setNames(end(centro_gr), as.character(seqnames(centro_gr)))
+
+```
+
+
+```{r}
+# Determine arm
+arm_label <- mapply(function(start, end, chr) {
+  # Check if the gene is on the chromosome first
+  if (!chr %in% names(centro_start)) {
+    return("NA")  # Not on a chromosome with a defined centromere
+  }
+  # Determine the genomic position relative to the centromere
+  if (end < centro_start[chr]) {
+    return("p")  # Short arm
+  } else if (start > centro_end[chr]) {
+    return("q")  # Long arm
+  } else {
+    return("centromere")  # Overlapping with centromere
+  }
+}, flat_starts, flat_ends, flat_chrs, USE.NAMES = FALSE)
+```
+
+```{r}
+# Add the arm labels to the flat_gene object
+flat_gene$arm <- arm_label
+
+# Convert to a data frame
+flat_gene_df <- as.data.frame(flat_gene, row.names = 1:length(flat_chrs)) %>%
+  select(gene_name, seqnames, arm) %>% 
+  arrange(seqnames, arm) %>% 
+  distinct(gene_name, .keep_all = TRUE)
+
+```
+
+```{r}
+# Save the gene annotation data frame
+write_csv(flat_gene_df, "data/secondary_data/gene_seqnames_nnotation_df.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 

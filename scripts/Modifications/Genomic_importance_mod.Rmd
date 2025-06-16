@@ -27,9 +27,8 @@ can_types <- c("BRCA", "LUAD", "LUSC", "HNSC")
 feat_imp_folder_pre <- "data/Cancer_specific_data/Model_output"
 feat_imp_folder_post <- "Results/Feature_importance/Base_feat_imp"
 
-
 # Load the gene annotations 
-gene_annotations <- read.csv("data/secondary_data/gene_annotations.csv", stringsAsFactors = FALSE, row.names = NULL)
+gene_annotations <- read.csv("data/secondary_data/gene_seqnames_nnotation_df.csv", stringsAsFactors = FALSE, row.names = NULL)
 
 # Load the gene_set genes
 gene_set_genes <- read.csv("data/secondary_data/Gene_set.csv", stringsAsFactors = FALSE)

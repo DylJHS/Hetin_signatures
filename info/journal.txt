@@ -37,3 +37,19 @@
 06/06/25
 - Finished looping over the different cancer types and base layer feature importance results removing genes which are located on the same chromosome for aneuploidy target features
 - Need to combine the results from all Targets into a single df
+- Have been doing this only for the aneuploid features but could still need to implement in some manner on the percentromeric cnvs
+- For the peri cnv feature importance modifications, could remove all genes on the chromosome (seems excessive), remove genes that are close to /wihtin the pericentromeric range 
+
+10/06/25
+- Need to edit the gene reduction to only include genes that are one the same chromosome arm
+- Will do the same for pericentromeric CNVs 
+
+11/06/25
+- Find the centromeric position of each chromosome or find gtf gene annotaion file that contains the chromosome arm annotation too
+
+12/06/25
+- Downloaded the centromeric positions from: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/
+- the file that was used was: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/centromeres.txt.gz
+- Need to combine the gene_annotation gtf and query it with the centromere annotation df to label genes to their corresponding arm
+
+16/06/25

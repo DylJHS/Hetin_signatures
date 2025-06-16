@@ -6,10 +6,8 @@ library(tidyverse)
 library(rtracklayer)
 library(GenomicRanges)
 
-# setwd("HetIN_signatures")
-
 # Load the gene annotations 
-gtf_file <- "data/secondary_data/Homo_sapiens_GRCh38_114_chr.gtf"
+gtf_file <- "HetIN_signatures/data/secondary_data/Homo_sapiens_GRCh38_114_chr.gtf"
 gtf <- import(gtf_file)
 
 gene_df <- data.frame(
@@ -23,4 +21,4 @@ gene_df <- gene_df %>% drop_na(gene_id, gene_name)
 
 
 # Save the df 
-write.csv(gene_df, "data/secondary_data/gene_annotations.csv", row.names = FALSE)
+# write.csv(gene_df, "data/secondary_data/gene_annotations.csv", row.names = FALSE)
