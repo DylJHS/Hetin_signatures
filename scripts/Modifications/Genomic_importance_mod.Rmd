@@ -20,6 +20,7 @@ library(GenomicRanges)
 
 ```
 
+Load the data and set up the environment
 ```{r}
 # Define the cancer types
 can_types <- c("BRCA", "LUAD", "LUSC", "HNSC")
@@ -35,15 +36,20 @@ gene_annotations <- read.csv("data/secondary_data/gene_seqnames_nnotation_df.csv
 gene_set_genes <- read.csv("data/secondary_data/Gene_set.csv", stringsAsFactors = FALSE)
 gene_set <- colnames(gene_set_genes)
 rm(gene_set_genes)
-```
 
-```{r}
 # reduce the gene annotations to the genes that are in the set of interest
 gene_annotations <- gene_annotations %>%
   filter(gene_name %in% gene_set)
+
+# Set the order for the response features
+response_features_order <- zipup(
+  paste0(1:22, "p"), 
+  paste0(1:22, "q")
+) %>% 
+  unlist() 
 ```
 
-
+Loop through each cancer type, modify and save the feature importance files
 ```{r}
 for (cancer in can_types) {
   cat("\n\n\n", cancer)
@@ -66,89 +72,100 @@ for (cancer in can_types) {
   filtered_cancer_type_imp_df <- data.frame()
   
   # Loop through each feature importance files in the folder
-  for (feature_file in list.files(ori_imp_folder, full.names = TRUE)[38:45]) {
-      # cat("\n\n", feature_file)
+  for (feature_file in list.files(ori_imp_folder, full.names = TRUE)) {
+    # cat("\n\n", feature_file)
+    
+    # Get the feature from the name
+    file_name <- basename(feature_file)
+    # cat("\n File name: ", file_name)
+    
+    name_split <- str_split(file_name, "_")[[1]]
+    first_part <- name_split[1]
+    # cat("\n First part: ", first_part)
+    
+    if (first_part %in% c("peri", "loh")) {
+      target_feat <- paste(name_split[1:2], collapse = "_")
+    } else {
+      target_feat <- first_part
+    }
+    # cat("\n Target_feat: ", target_feat)
       
-      # Get the feature from the name
-      file_name <- basename(feature_file)
-      # cat("\n File name: ", file_name)
+    # Read the CSV file
+    feature_df <- read.csv(feature_file, stringsAsFactors = FALSE, row.names = NULL) %>% 
+      select(-X)
+    
+    # Join the dfs
+    feat_joind_df <- feature_df %>%
+      left_join(
+        gene_annotations %>% 
+          select(c("gene_name", "seqnames", "arm")), 
+        by = c("Feature" = "gene_name")
+        ) %>%
+      rename(
+        "Chr" = "seqnames",
+        "Arm" = "arm"
+      ) %>% 
+      drop_na(Chr) %>%
+      mutate(
+        chrm_arm = paste0(Chr, Arm),
+        Target = target_feat
+      ) %>% 
+      select(-c("Chr", "Arm")) %>% 
+      arrange(desc(Gain))
       
-      name_split <- str_split(file_name, "_")[[1]]
-      first_part <- name_split[1]
-      # cat("\n First part: ", first_part)
+    # Save to the complete folder
+    complete_df_name <- paste0(complete_imp_folder, "/complete_", file_name)
+    # write.csv(feat_joind_df, complete_df_name, row.names = FALSE, )
+    
+    # Append to the fully complete df
+    complete_cancer_type_imp_df <- rbind(complete_cancer_type_imp_df, feat_joind_df)
       
-      if (first_part %in% c("peri", "loh")) {
-        target_feat <- paste(name_split[1:2], collapse = "_")
-      } else {
-        target_feat <- first_part
-      }
-      cat("\n Target_feat: ", target_feat)
-        
-      # Read the CSV file
-      feature_df <- read.csv(feature_file, stringsAsFactors = FALSE, row.names = NULL) %>% 
-        select(-X)
-      
-      # Join the dfs
-      feat_joind_df <- feature_df %>%
-        left_join(
-          gene_annotations %>% 
-            select(c("gene_name", "seqnames", "arm")), 
-          by = c("Feature" = "gene_name")
-          ) %>%
-        rename(
-          "Chr" = "seqnames",
-          "Arm" = "arm"
-        ) %>% 
-        drop_na(Chr) %>%
-        mutate(
-          chrm_arm = paste0(Chr, Arm),
-          Target = target_feat
-        ) %>% 
-        select(-c("Chr", "Arm")) %>% 
-        arrange(desc(Gain))
-        
-      # Save to the complete folder
-      complete_df_name <- paste0(complete_imp_folder, "/complete_", file_name)
-      # write.csv(feat_joind_df, complete_df_name, row.names = FALSE, )
-      
-      # Append to the fully complete df
-      complete_cancer_type_imp_df <- rbind(complete_cancer_type_imp_df, feat_joind_df)
-        
-        # Check if the feature is an aneuploidy (ends with q or p)
-      if (substr(target_feat, nchar(target_feat), nchar(target_feat)) %in% c("q", "p")) {
-        # cat("\n Target_feat is an aneuploidy: ", target_feat)
+      # Check if the feature is an aneuploidy (ends with q or p)
+    if (substr(target_feat, nchar(target_feat), nchar(target_feat)) %in% c("q", "p")) {
+      # cat("\n Target_feat is an aneuploidy: ", target_feat)
 
-        # Exclude the target feature from the dataframe
-        filt_feat_joind_df <- feat_joind_df %>% 
-          filter(
-            chrm_arm != target_feat
-          ) 
-        
-        # Save the modified dataframe
-        filtered_df_name <- paste0(filt_imp_folder, "/filt_", file_name)
-        # write.csv(filt_feat_joind_df, filtered_df_name, row.names = FALSE)
-        
-        # Append the fully filtered df
-        filtered_cancer_type_imp_df <- rbind(filtered_cancer_type_imp_df, filt_feat_joind_df)
-        
-      }
-      else {
-        # Append the fully filtered df with the complete df
-        filtered_cancer_type_imp_df <- rbind(filtered_cancer_type_imp_df, feat_joind_df)
-        
-        # save the file to the filtered folder
-        filtered_df_name <- paste0(filt_imp_folder, "/filt_", file_name)
-        # write.csv(feat_joind_df, filtered_df_name, row.names = FALSE)
-      }
+      # Exclude the target feature from the dataframe
+      filt_feat_joind_df <- feat_joind_df %>% 
+        filter(
+          chrm_arm != target_feat
+        ) 
+      
+      # Save the modified dataframe
+      filtered_df_name <- paste0(filt_imp_folder, "/filt_", file_name)
+      write.csv(filt_feat_joind_df, filtered_df_name, row.names = FALSE)
+      
+      # Append the fully filtered df
+      filtered_cancer_type_imp_df <- rbind(filtered_cancer_type_imp_df, filt_feat_joind_df)
+      
+    }
+    else {
+      # Append the fully filtered df with the complete df
+      filtered_cancer_type_imp_df <- rbind(filtered_cancer_type_imp_df, feat_joind_df)
+      
+      # save the file to the filtered folder
+      filtered_df_name <- paste0(filt_imp_folder, "/filt_", file_name)
+      write.csv(feat_joind_df, filtered_df_name, row.names = FALSE)
+    }
+  
+    # remove the variables to save memory
+    rm(feature_df, feat_joind_df, filtered_df_name, complete_df_name, filt_feat_joind_df)
+  
   }
+  
+  # Set the order for the Target features
+  response_features_order <- c(
+    zipup(paste0(1:22, "p"), paste0(1:22, "q")) %>% unlist(),
+    sort(grep("^peri", unique(complete_cancer_type_imp_df$Target), value = TRUE)),
+    "ai1", "lst1", "loh_hrd"
+  )
   
   # Save the full complete cancer type feature importance df
   full_complete_cancer_feat_imp_name <- paste0(feat_imp_folder, "/full_complete_", cancer, "_feat_imp.csv")
-  # write.csv(complete_cancer_type_imp_df, full_complete_cancer_feat_imp_name, row.names = FALSE)
+  write.csv(complete_cancer_type_imp_df, full_complete_cancer_feat_imp_name, row.names = FALSE)
   
   # Save the full filtered cancer type feature importance df
   full_filtered_cancer_feat_imp_name <- paste0(feat_imp_folder, "/full_filtered_", cancer, "_feat_imp.csv")
-  # write.csv(filtered_cancer_type_imp_df, full_filtered_cancer_feat_imp_name, row.names = FALSE)
+  write.csv(filtered_cancer_type_imp_df, full_filtered_cancer_feat_imp_name, row.names = FALSE)
   
   # Filter the cancer type feat imp df to the top genes only
   top_complete_feat_imp_df <- complete_cancer_type_imp_df %>%
@@ -157,10 +174,93 @@ for (cancer in can_types) {
     ungroup()
   
   top_filtered_feat_imp_df <- filtered_cancer_type_imp_df %>%
-    group_by(Feature) %>%
-    slice_max(Target, n = 1) %>%
+    group_by(Target) %>%
+    slice_max(Gain, n = 1) %>%
     ungroup()
+  
+  # Save the top genes feature importance for the unfiltered df
+  top_complete_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_complete_", cancer, "_feat_imp.csv")
+  write.csv(top_complete_feat_imp_df, top_complete_feat_imp_name, row.names = FALSE)
+  
+  # Save the top genes feature importance for the df which is filtered to remove
+  # the genes that are cis-genes of aneuploidy features
+  top_filtered_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_filtered_", cancer, "_feat_imp.csv")
+  write.csv(top_filtered_feat_imp_df, top_filtered_feat_imp_name, row.names = FALSE)
 }
+```
+Generate the plots for the feature importance
+```{r}
+# Heatmap of the top features
+
+# For the complete data (unfiltered)
+top_genes_complete <- complete_cancer_type_imp_df %>%
+  filter(
+    Feature %in% top_complete_feat_imp_df$Feature,
+  ) %>% 
+  dplyr::select(Feature, Target, Gain) %>%
+  pivot_wider(names_from = Feature, values_from = Gain) %>%
+  replace(is.na(.), 0) %>% 
+  pivot_longer(!Target, names_to = "Feature", values_to = "Gain") %>% 
+  mutate(Target = factor(Target, levels = response_features_order),
+         Gain = round(Gain, 3)) %>%
+  dplyr::arrange(Target, desc(Gain))
+
+
+complete_genomic_heatmap <- ggplot(top_genes_complete, aes(x = Feature, y = Target, fill = Gain)) +
+  geom_tile(colour = "black", lwd = 0.3) +
+  scale_fill_gradient2(low = "white", high = "#D21717") +
+  labs(
+    title = "",
+     x = "Gene",
+     y = "Base Learner",
+     # subtitle = paste0("Cancer type: ", cancer_type)
+   ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black", size = 10),
+    axis.text.y = element_text(angle = 0, hjust = 1, color = "black", size = 11),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    plot.subtitle = element_text( size = 12),
+    legend.title = element_text(size = 15, face = "bold"),
+    legend.position = "top",
+    axis.title = element_text(size = 17, face = "bold"),
+    plot.caption = element_text(size = 11, face = "italic")
+  )
+
+# For the filtered data (with cis-genes of aneuploidy features removed)
+top_genes_filtered <- filtered_cancer_type_imp_df %>%
+  filter(
+    Feature %in% top_filtered_feat_imp_df$Feature,
+  ) %>% 
+  dplyr::select(Feature, Target, Gain) %>%
+  pivot_wider(names_from = Feature, values_from = Gain) %>%
+  replace(is.na(.), 0) %>% 
+  pivot_longer(!Target, names_to = "Feature", values_to = "Gain") %>% 
+  mutate(Target = factor(Target, levels = response_features_order),
+         Gain = round(Gain, 3)) %>%
+  dplyr::arrange(Target, desc(Gain))
+
+filtered_genomic_heatmap <- ggplot(top_genes_filtered, aes(x = Feature, y = Target, fill = Gain)) +
+  geom_tile(colour = "black", lwd = 0.3) +
+  scale_fill_gradient2(low = "white", high = "#D21717") +
+  labs(
+    title = "",
+     x = "Gene",
+     y = "Base Learner",
+     # subtitle = paste0("Cancer type: ", cancer_type)
+   ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black", size = 10),
+    axis.text.y = element_text(angle = 0, hjust = 1, color = "black", size = 11),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    plot.subtitle = element_text( size = 12),
+    legend.title = element_text(size = 15, face = "bold"),
+    legend.position = "top",
+    axis.title = element_text(size = 17, face = "bold"),
+    plot.caption = element_text(size = 11, face = "italic")
+  )
+
 ```
 
 
