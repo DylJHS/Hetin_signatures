@@ -57,3 +57,10 @@
 - Edited the Genomic_importance_mod.RMD script to integrate this new df into the pipeline so that it is able to identify the genes from the same chr & arm as the Target feature and remove them from the feat importance heatmap
 - Produce teh visualisations for the modified resutls
 - Think about how to incorporate this tactic for the pericentromeric CNVs
+
+17/06/25
+- by removing cis genes that appear on the same features, we are losign the ability to identify cis-drivers of the target feature
+- Could break the output down into 2 heatmaps per feature:
+	- one with all genes 
+	- one with only trans acting genes (no genes from teh same target feature)
+- Might be best to leave teh genes for the pericentromeric cnv features since few genes will show up within the genomic window and any that do would be mechanistically interesting
