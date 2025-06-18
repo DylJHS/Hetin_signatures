@@ -13,6 +13,7 @@ knitr::opts_knit$set(root.dir = "D:/projects/HetIN_signatures/")
 
 Load the packages
 ```{r}
+library(dplyr)
 library(tidyverse)
 library(ggplot2)
 library(rtracklayer)
@@ -37,7 +38,6 @@ gene_annotations <- read.csv("data/secondary_data/gene_seqnames_nnotation_df.csv
 # Load the gene_set genes
 gene_set_genes <- read.csv("data/secondary_data/Gene_set.csv", stringsAsFactors = FALSE)
 gene_set <- colnames(gene_set_genes)
-rm(gene_set_genes)
 
 # reduce the gene annotations to the genes that are in the set of interest
 gene_annotations <- gene_annotations %>%
@@ -112,19 +112,15 @@ for (cancer in can_types) {
     feat_joind_df <- feature_df %>%
       left_join(
         gene_annotations %>% 
-          select(c("gene_name", "seqnames", "arm")), 
+          select(gene_name,seqnames, arm), 
         by = c("Feature" = "gene_name")
-        ) %>%
-      rename(
-        "Chr" = "seqnames",
-        "Arm" = "arm"
-      ) %>% 
+        ) %>% dplyr::rename(Chr = seqnames, Arm = arm) %>%
       drop_na(Chr) %>%
       mutate(
         chrm_arm = paste0(Chr, Arm),
         Target = target_feat
-      ) %>% 
-      select(-c("Chr", "Arm")) %>% 
+      ) %>%
+      select(-c("Chr", "Arm")) %>%
       arrange(desc(Gain))
       
     # Save to the complete folder
@@ -188,25 +184,52 @@ for (cancer in can_types) {
     slice_max(Gain, n = 1) %>%
     ungroup()
   
+  # Save the top genes feature importance for the unfiltered df
+  top_complete_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_complete_", cancer, "_feat_imp.csv")
+  # write.csv(top_complete_feat_imp_df, top_complete_feat_imp_name, row.names = FALSE)
+  
   top_filtered_feat_imp_df <- filtered_cancer_type_imp_df %>%
     group_by(Target) %>%
     slice_max(Gain, n = 1) %>%
     ungroup()
-  
-  # Save the top genes feature importance for the unfiltered df
-  top_complete_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_complete_", cancer, "_feat_imp.csv")
-  # write.csv(top_complete_feat_imp_df, top_complete_feat_imp_name, row.names = FALSE)
   
   # Save the top genes feature importance for the df which is filtered to remove
   # the genes that are cis-genes of aneuploidy features
   top_filtered_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_filtered_", cancer, "_feat_imp.csv")
   # write.csv(top_filtered_feat_imp_df, top_filtered_feat_imp_name, row.names = FALSE)
   
+  # combine the top gene files
+  top_genes_combined <- top_complete_feat_imp_df %>%
+    select(Target, Feature, Gain, chrm_arm) %>%
+    dplyr::rename(
+      Gain_complete = Gain,
+      chrm_arm_complete = chrm_arm,
+      Feature_complete = Feature,
+      Target_complete = Target
+    ) %>% 
+    left_join(
+      top_filtered_feat_imp_df %>%
+        select(Target, Feature, Gain, chrm_arm) %>%
+        dplyr::rename(
+          Gain_filtered = Gain,
+          chrm_arm_filtered = chrm_arm,
+          Feature_filtered = Feature,
+          Target_filtered = Target
+        ),
+      by = c("Target_complete" = "Target_filtered")
+    ) %>%
+    mutate(Target_complete = factor(Target_complete, levels = response_features_order)) %>%
+    arrange(Target_complete)
+  
+  # Save the combined top genes feature importance
+  top_genes_combined_name <- paste0(feat_imp_folder, "/top_genes_combined_", cancer, "_feat_imp.csv")
+  write.csv(top_genes_combined, top_genes_combined_name, row.names = FALSE)
+  
   
   # Generate the plots
   # For the complete data (with all genes)
   # Transform the dataframe to a format suitable for heatmap
-  top_genes_complete <- complete_cancer_type_imp_df %>%
+  heatmap_genes_complete <- complete_cancer_type_imp_df %>%
     filter(
       Feature %in% top_complete_feat_imp_df$Feature,
     ) %>% 
@@ -220,8 +243,12 @@ for (cancer in can_types) {
     ) %>%
     dplyr::arrange(Target, desc(Gain))
   
+  # Save the heatmap genes complete dataframe
+  heatmap_genes_complete_name <- paste0(feat_imp_folder, "/heatmap_genes_complete_", cancer, "_feat_imp_df.csv")
+  # write.csv(heatmap_genes_complete, heatmap_genes_complete_name, row.names = FALSE)
+  
   # Generate the heatmap for the complete data (with all genes)
-  complete_genomic_heatmap <- ggplot(top_genes_complete, aes(x = Feature, y = Target, fill = Gain)) +
+  complete_genomic_heatmap <- ggplot(heatmap_genes_complete, aes(x = Feature, y = Target, fill = Gain)) +
     geom_tile(colour = "black", lwd = 0.3) +
     scale_fill_gradient2(low = "white", high = "#D21717") +
     labs(
@@ -248,7 +275,7 @@ for (cancer in can_types) {
 
   # For the filtered data (with cis-genes of aneuploidy features removed)
   # Transform the dataframe to a format suitable for heatmap
-  top_genes_filtered <- filtered_cancer_type_imp_df %>%
+  heatmap_genes_filtered <- filtered_cancer_type_imp_df %>%
     filter(
       Feature %in% top_filtered_feat_imp_df$Feature,
     ) %>%
@@ -261,9 +288,13 @@ for (cancer in can_types) {
       Gain = round(as.numeric(Gain), 2)
     ) %>%
     dplyr::arrange(Target, desc(Gain))
+  
+  # Save the heatmap genes filtered dataframe
+  heatmap_genes_filtered_name <- paste0(feat_imp_folder, "/heatmap_genes_filtered_", cancer, "_feat_imp_df.csv")
+  # write.csv(heatmap_genes_filtered, heatmap_genes_filtered_name, row.names = FALSE)
 
   # Generate the heatmap for the filtered data (with cis-genes of aneuploidy features removed)
-  filtered_genomic_heatmap <- ggplot(top_genes_filtered, aes(x = Feature, y = Target, fill = Gain)) +
+  filtered_genomic_heatmap <- ggplot(heatmap_genes_filtered, aes(x = Feature, y = Target, fill = Gain)) +
     geom_tile(colour = "black", lwd = 0.3) +
     scale_fill_gradient2(low = "white", high = "#D21717") +
     labs(
