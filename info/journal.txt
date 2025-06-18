@@ -64,3 +64,10 @@
 	- one with all genes 
 	- one with only trans acting genes (no genes from teh same target feature)
 - Might be best to leave teh genes for the pericentromeric cnv features since few genes will show up within the genomic window and any that do would be mechanistically interesting
+- Finished the edit for the genomic feature importance script
+- Need to edit the interaction feature importance to exclude the a self-assingment where the most important base learner is teh same as the meta learner
+
+18/06/25
+- Don't need to edit the interaction plot or script since all interactions are already displayed by the plot
+- Reasoning for cis-gene exclusion strategy :
+		"We kept all genes—including those on the target arm—inside each arm-aneuploidy learner during training, but we hide the same-arm (“cis”) genes when we visualise feature importance. This compromise preserves the classifier’s best-possible accuracy (because the model can still exploit the strong expression-dosage signal of cis genes) while preventing a circular interpretation that merely restates the copy-number event. The trade-off is clear: by anchoring the model on highly predictive cis features we inevitably down-weight trans-acting genes in the raw Gain / SHAP distribution, so the trans-only importance heatmap can look muted. Had we removed cis genes at training time we would likely recover bolder trans-acting importances, but at the cost of poorer overall performance and a departure from the baseline model we compare throughout the bottom-up workflow. Thus, masking at interpretation gives a defensible balance between interpretability and robustness, and any residual under-representation of trans effects is made explicit rather than silently baked into weaker models."

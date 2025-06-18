@@ -2,7 +2,7 @@
 title: "gene_annotation_df_creation"
 output: html_document
 date: "2025-06-11"
-note: "This script serves to create a gene annotation data frame that includes the chromosome and arm information for each gene. The data is derived from a GTF file and centromere locations."
+note: "This script serves to create a gene annotation data frame that includes the chromosome and arm information for each gene. The data is derived from a GTF file and centromere locations.This script generates a gene annotation table with chromosome arm (p or q) labels by integrating gene coordinates from an Ensembl GTF file with centromere midpoint data from UCSC. Each gene is assigned to an arm based on whether its start position lies before or after the centromere. The output includes both a full annotation of all protein-coding genes and a subset containing only genes from the predefined heterochromatin interactome (Set of Interest). These annotations are used to distinguish cis- and trans-acting genes in downstream analyses of feature importance from CIN prediction models."
 ---
 
 ```{r setup, include=FALSE}
