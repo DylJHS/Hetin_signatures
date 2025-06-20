@@ -71,3 +71,28 @@
 - Don't need to edit the interaction plot or script since all interactions are already displayed by the plot
 - Reasoning for cis-gene exclusion strategy :
 		"We kept all genes—including those on the target arm—inside each arm-aneuploidy learner during training, but we hide the same-arm (“cis”) genes when we visualise feature importance. This compromise preserves the classifier’s best-possible accuracy (because the model can still exploit the strong expression-dosage signal of cis genes) while preventing a circular interpretation that merely restates the copy-number event. The trade-off is clear: by anchoring the model on highly predictive cis features we inevitably down-weight trans-acting genes in the raw Gain / SHAP distribution, so the trans-only importance heatmap can look muted. Had we removed cis genes at training time we would likely recover bolder trans-acting importances, but at the cost of poorer overall performance and a departure from the baseline model we compare throughout the bottom-up workflow. Thus, masking at interpretation gives a defensible balance between interpretability and robustness, and any residual under-representation of trans effects is made explicit rather than silently baked into weaker models."
+- Fitlered out the cis-genes from the heatmaps 
+
+19/06/25
+- Finding genes that differ or remain between the filtered vs unfiltered genomic importance outputs
+- Focusing on the genes that remain (for the aneuploid target features obviously)
+- In BRCA, the 4p target feature shows the same contributing gene between the filtered and unfiltered sets SUV39H2
+- Looking through the lit there does not seem to be a known connection between SUV39H2 and chromsome 4p 
+- SUV39H2 is genomically located on 10p
+- Target feature 4p retains the same top gene across all 4 cancer types 
+- 4p also shows somewhat of a low accuracy across all 4 cancer types 
+
+
+20/06/25
+- Metting with adi about the findings and new changes
+- From the meeting: 
+	- Add the whole chromosome exclusion as well as the chromosome arm exclusion
+	- filter the pancan genomic importance
+	- implement the shapley values
+	- change the heatmaps to breakdown by type (aneuploidy features, pericentromeric cnv features, hrd scores)
+	- Edit the gradient for the self features in the meta interactions heatmap
+	- Think about the use of DL learners in the model 
+	- Think and read about a Generative model that can make predictions about KO genes 
+- Need to find the files for the general PANCAN model on the Mac
+- Not in the project/Janssen/chromatin_cancer folder
+	
