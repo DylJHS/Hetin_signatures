@@ -88,11 +88,19 @@
 - From the meeting: 
 	- Add the whole chromosome exclusion as well as the chromosome arm exclusion
 	- filter the pancan genomic importance
+	- Create the top 10 feature plot after the filtering
 	- implement the shapley values
 	- change the heatmaps to breakdown by type (aneuploidy features, pericentromeric cnv features, hrd scores)
+	- Highlight the gene's chromosome of origin
 	- Edit the gradient for the self features in the meta interactions heatmap
 	- Think about the use of DL learners in the model 
 	- Think and read about a Generative model that can make predictions about KO genes 
 - Need to find the files for the general PANCAN model on the Mac
 - Not in the project/Janssen/chromatin_cancer folder
 	
+	
+23/06/25
+- Found the folders and files in icloud drive
+- Downloading and uploading to projects/janssen/chromatin_cancer
+- Created the modified genomic importance script to for the general model
+- Recreating the modified genomic importance but for cis-genes chromosome wide and not solely chromosome-arm wide
