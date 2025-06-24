@@ -18,7 +18,7 @@ library(tidyverse)
 library(ggplot2)
 library(rtracklayer)
 library(GenomicRanges)
-
+library(ggnewscale)
 ```
 
 Load the data and set up the environment
@@ -41,7 +41,10 @@ gene_set <- colnames(gene_set_genes)
 
 # reduce the gene annotations to the genes that are in the set of interest
 gene_annotations <- gene_annotations %>%
-  filter(gene_name %in% gene_set)
+  filter(gene_name %in% gene_set) %>% 
+  mutate(
+    chr_arm = paste0(seqnames, arm) # combine the chromosome and arm into new column
+  )
 
 # Set the order for the response features
 response_features_order <- zipup(
@@ -49,6 +52,9 @@ response_features_order <- zipup(
   paste0(1:22, "q")
 ) %>% 
   unlist() 
+
+# target feature type order for the heatmap
+ type_order <- c("HRD", "peri CNV", "Aneuploidy")
 ```
 
 Loop through each cancer type, modify and save the feature importance files
@@ -59,7 +65,8 @@ for (cancer in can_types) {
   # Define the folders for the feature importance files 
   feat_imp_folder <- file.path(feat_imp_folder_pre, cancer, feat_imp_folder_post)
   complete_imp_folder <- file.path(feat_imp_folder, "complete")
-  filt_imp_folder <- file.path(feat_imp_folder, "filtered")
+  arm_lvl_filt_imp_folder <- file.path(feat_imp_folder, "arm_lvl_filtered")
+  chrm_lvl_filt_imp_folder <- file.path(feat_imp_folder, "chrm_lvl_filtered")
   ori_imp_folder <- file.path(feat_imp_folder, "original")
   
   # Define the folders for the feature importance plots 
@@ -69,13 +76,22 @@ for (cancer in can_types) {
   if (!dir.exists(complete_imp_folder)) {
     dir.create(complete_imp_folder, recursive = TRUE)
   }
-  if (!dir.exists(filt_imp_folder)) {
-    dir.create(filt_imp_folder, recursive = TRUE)
+  if (!dir.exists(arm_lvl_filt_imp_folder)) {
+    dir.create(arm_lvl_filt_imp_folder, recursive = TRUE)
+  }
+  if (!dir.exists(chrm_lvl_filt_imp_folder)) {
+    dir.create(chrm_lvl_filt_imp_folder, recursive = TRUE)
   }
   
+  # Initialize empty dataframes to store the results
   complete_cancer_type_imp_df <- data.frame()
-  filtered_cancer_type_imp_df <- data.frame()
+  arm_lvl_filtered_cancer_type_imp_df <- data.frame()
+  chrm_lvl_filtered_cancer_type_imp_df <- data.frame()
   
+  # initialize sets to store the features by type
+  hrd_set <- c("ai1", "lst1", "loh_hrd")
+  peri_set <- c()
+  aneu_set <- c()
   
   # Loop through each feature importance files in the folder
   for (feature_file in list.files(ori_imp_folder, full.names = TRUE)) {
@@ -99,11 +115,13 @@ for (cancer in can_types) {
       } else {
         target_feat <- paste(name_split[1:2], collapse = "_")
       }
+      peri_set <- append(peri_set, target_feat)
     }
     else {
       target_feat <- first_part
+      chr <- substr(target_feat, 1, nchar(target_feat) - 1)
     }
-    cat("\n Target_feat: ", target_feat)
+    # cat("\n Target_feat: ", target_feat)
       
     # Read the CSV file
     feature_df <- read.csv(feature_file, stringsAsFactors = FALSE, row.names = NULL) %>% 
@@ -135,34 +153,58 @@ for (cancer in can_types) {
       
       # Check if the feature is an aneuploidy (ends with q or p)
     if (substr(target_feat, nchar(target_feat), nchar(target_feat)) %in% c("q", "p")) {
+      # Add to aneu set
+      aneu_set <- append(aneu_set, target_feat)
       # cat("\n Target_feat is an aneuploidy: ", target_feat)
-
+      
+      # ARM-LEVEL FILTERING
       # Exclude the target feature from the feature importance dataframe
-      filt_feat_joind_df <- feat_joind_df %>% 
+      arm_lvl_filt_feat_joind_df <- feat_joind_df %>% 
         filter(chrm_arm != target_feat) 
       
       # Save the modified dataframe
-      filtered_df_name <- paste0(filt_imp_folder, "/filt_", file_name)
+      arm_lvl_filtered_df_name <- paste0(arm_lvl_filt_imp_folder, "/arm_lvl_filt_", file_name)
       # write.csv(filt_feat_joind_df, filtered_df_name, row.names = FALSE)
       
       # Append the fully filtered df
-      filtered_cancer_type_imp_df <- rbind(filtered_cancer_type_imp_df, filt_feat_joind_df)
+      arm_lvl_filtered_cancer_type_imp_df <- rbind(arm_lvl_filtered_cancer_type_imp_df, arm_lvl_filt_feat_joind_df)
+      
+      # CHROMOSOME-LEVEL FILTERING
+      # Exclude the target feature from the feature importance dataframe
+      chrm_lvl_filt_feat_joind_df <- feat_joind_df %>% 
+        filter(Chr != chr)
+      
+      # Save the modified dataframe
+      chrm_lvl_filtered_df_name <- paste0(chrm_lvl_filt_imp_folder, "/chrm_lvl_filt_", file_name)
+      # write.csv(chrm_lvl_filt_feat_joind_df, chrm_lvl_filtered_df_name, row.names = FALSE)
+      
+      # Append the fully chromosome level filtered df
+      chrm_lvl_filtered_cancer_type_imp_df <- rbind(chrm_lvl_filtered_cancer_type_imp_df, chrm_lvl_filt_feat_joind_df)
       
     }
     else { # if not an aneuploidy feature
       
+      # ARM-LEVEL FILTERING
       # save the file to the filtered folder
-      filtered_df_name <- paste0(filt_imp_folder, "/filt_", file_name)
-      # write.csv(feat_joind_df, filtered_df_name, row.names = FALSE)
+      arm_lvl_filtered_df_name <- paste0(arm_lvl_filt_imp_folder, "/arm_lvl_filt_", file_name)
+      # write.csv(feat_joind_df, arm_lvl_filtered_df_name, row.names = FALSE)
       
       # Append the fully filtered df with this target's feature importance df
-      filtered_cancer_type_imp_df <- rbind(filtered_cancer_type_imp_df, feat_joind_df)
+      arm_lvl_filtered_cancer_type_imp_df <- rbind(arm_lvl_filtered_cancer_type_imp_df, feat_joind_df)
       
+      # CHROMOSOME-LEVEL FILTERING
+      # save the file to the filtered folder
+      chrm_lvl_filtered_df_name <- paste0(chrm_lvl_filt_imp_folder, "/chrm_lvl_filt_", file_name)
+      # write.csv(feat_joind_df, chrm_lvl_filtered_df_name, row.names = FALSE)
+      
+      # Append the fully filtered df with this target's feature importance df
+      chrm_lvl_filtered_cancer_type_imp_df <- rbind(chrm_lvl_filtered_cancer_type_imp_df, feat_joind_df)
     }
   
     # # remove the variables to save memory
     objs_to_rm <- c("feature_df", "feat_joind_df", "filtered_df_name", "complete_df_name", "filt_feat_joind_df")
     rm(list = objs_to_rm[objs_to_rm %in% ls()])
+    rm(objs_to_rm)
   }
   
   # Set the order for the Target features
@@ -175,10 +217,19 @@ for (cancer in can_types) {
   # Save the full complete cancer type feature importance df
   full_complete_cancer_feat_imp_name <- paste0(feat_imp_folder, "/full_complete_", cancer, "_feat_imp.csv")
   # write.csv(complete_cancer_type_imp_df, full_complete_cancer_feat_imp_name, row.names = FALSE)
+  rm(full_complete_cancer_feat_imp_name)
   
+  # ARM-LEVEL FILTERING
   # Save the full filtered cancer type feature importance df
   full_filtered_cancer_feat_imp_name <- paste0(feat_imp_folder, "/full_filtered_", cancer, "_feat_imp.csv")
   # write.csv(filtered_cancer_type_imp_df, full_filtered_cancer_feat_imp_name, row.names = FALSE)
+  rm(full_filtered_cancer_feat_imp_name)
+  
+  # CHROMOSOME-LEVEL FILTERING
+  # Save the full chromosome level filtered cancer type feature importance df
+  full_chrm_lvl_filtered_cancer_feat_imp_name <- paste0(feat_imp_folder, "/full_chrm_lvl_filtered_", cancer, "_feat_imp.csv")
+  # write.csv(chrm_lvl_filtered_cancer_type_imp_df, full_chrm_lvl_filtered_cancer_feat_imp_name, row.names = FALSE)
+  rm(full_chrm_lvl_filtered_cancer_feat_imp_name)
   
   
   # Filter the cancer type feat imp df to the top genes only
@@ -190,18 +241,33 @@ for (cancer in can_types) {
   # Save the top genes feature importance for the unfiltered df
   top_complete_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_complete_", cancer, "_feat_imp.csv")
   # write.csv(top_complete_feat_imp_df, top_complete_feat_imp_name, row.names = FALSE)
+  rm(top_complete_feat_imp_name)
   
-  
+  # ARM-LEVEL FILTERING
   # Filter the cancer type feat imp df to the top genes only
-  top_filtered_feat_imp_df <- filtered_cancer_type_imp_df %>%
+  top_arm_lvl_filtered_feat_imp_df <- arm_lvl_filtered_cancer_type_imp_df %>%
+    group_by(Target) %>%
+    slice_max(Gain, n = 1) %>%
+    ungroup()
+  
+  # Save the top genes feature importance for the df which is filtered to remove
+  # the genes that are arm-level cis-genes of aneuploidy features
+  top_arm_lvl_filtered_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_filtered_", cancer, "_feat_imp.csv")
+  # write.csv(top_arm_lvl_filtered_feat_imp_df, top_arm_lvl_filtered_feat_imp_name, row.names = FALSE)
+  rm(top_arm_lvl_filtered_feat_imp_name)
+  
+  # CHROMOSOME-LEVEL FILTERING
+  # Filter the cancer type feat imp df to the top genes only
+  top_chrm_lvl_filtered_feat_imp_df <- chrm_lvl_filtered_cancer_type_imp_df %>%
     group_by(Target) %>%
     slice_max(Gain, n = 1) %>%
     ungroup()
   
   # Save the top genes feature importance for the df which is filtered to remove
   # the genes that are cis-genes of aneuploidy features
-  top_filtered_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_filtered_", cancer, "_feat_imp.csv")
-  # write.csv(top_filtered_feat_imp_df, top_filtered_feat_imp_name, row.names = FALSE)
+  top_chrm_lvl_filtered_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_chrm_lvl_filtered_", cancer, "_feat_imp.csv")
+  # write.csv(top_chrm_lvl_filtered_feat_imp_df, top_chrm_lvl_filtered_feat_imp_name, row.names = FALSE)
+  rm(top_chrm_lvl_filtered_feat_imp_name)
   
   
   # combine the top gene files
@@ -209,83 +275,289 @@ for (cancer in can_types) {
     select(Target, Feature, Gain, chrm_arm) %>%
     dplyr::rename(
       Gain_complete = Gain,
-      chrm_arm_complete = chrm_arm,
-      Feature_complete = Feature,
-      Target_complete = Target
+      gene_loc_complt = chrm_arm,
+      Feature_complt = Feature,
+      Target_complt = Target
     ) %>% 
     left_join(
-      top_filtered_feat_imp_df %>%
+      top_arm_lvl_filtered_feat_imp_df %>%
         select(Target, Feature, Gain, chrm_arm) %>%
         dplyr::rename(
           Gain_filtered = Gain,
-          chrm_arm_filtered = chrm_arm,
-          Feature_filtered = Feature,
-          Target_filtered = Target
+          gene_loc_arm_filt = chrm_arm,
+          Feature_arm_filt = Feature,
+          Target_arm_filt = Target
         ),
-      by = c("Target_complete" = "Target_filtered")
+      by = c("Target_complt" = "Target_arm_filt")
     ) %>%
-    mutate(Target_complete = factor(Target_complete, levels = response_features_order)) %>%
-    arrange(Target_complete)
+    left_join(
+      top_chrm_lvl_filtered_feat_imp_df %>%
+        select(Target, Feature, Gain, chrm_arm) %>%
+        dplyr::rename(
+          Gain_chrm_filt = Gain,
+          gene_loc_chrm_filt = chrm_arm,
+          Feature_chrm_filt = Feature,
+          Target_chrm_filt = Target
+        ),
+      by = c("Target_complt" = "Target_chrm_filt")
+    ) %>%
+    mutate(Target_complt = factor(Target_complt, levels = response_features_order)) %>%
+    arrange(Target_complt)
   
   # Save the combined top genes feature importance
   top_genes_combined_name <- paste0(feat_imp_folder, "/top_genes_combined_", cancer, "_feat_imp.csv")
   # write.csv(top_genes_combined, top_genes_combined_name, row.names = FALSE)
+  rm(top_genes_combined_name)
   
   
   # Generate the plots
-  # For the complete data (with all genes)
+ 
+  # UNFILTERED DATA
   # Transform the dataframe to a format suitable for heatmap
   heatmap_genes_complete <- complete_cancer_type_imp_df %>%
-    filter(
-      Feature %in% top_complete_feat_imp_df$Feature,
-    ) %>% 
-    dplyr::select(Feature, Target, Gain) %>%
-    pivot_wider(names_from = Feature, values_from = Gain) %>%
-    replace(is.na(.), 0) %>% 
-    pivot_longer(!Target, names_to = "Feature", values_to = "Gain") %>% 
-    mutate(
-      Target = factor(Target, levels = response_features_order),
-      Gain = round(Gain, 2)
-    ) %>%
-    dplyr::arrange(Target, desc(Gain))
+  filter(
+    Feature %in% top_complete_feat_imp_df$Feature,
+  ) %>% 
+  dplyr::select(Feature, Target, Gain) %>%
+  pivot_wider(names_from = Feature, values_from = Gain) %>%
+  replace(is.na(.), 0) %>% 
+  pivot_longer(!Target, names_to = "Feature", values_to = "Gain") %>% 
+  mutate(
+    Target = factor(Target, levels = response_features_order),
+    Gain = round(Gain, 2)
+  ) %>% 
+  left_join(
+    gene_annotations %>% 
+      select(gene_name, chr_arm) %>% 
+      dplyr::rename(Feature = gene_name, gene_loc = chr_arm),
+    by = "Feature"
+  ) %>%
+  mutate(
+    is_gene_loc = Target == gene_loc,
+    type = ifelse(
+      Target %in% aneu_set, "Aneuploidy",
+      ifelse(Target %in% peri_set, "peri CNV", "HRD")
+    )
+  ) %>%
+  dplyr::arrange(Target, desc(Gain))
+  
+  # Set the order for the target type factor
+  heatmap_genes_complete$type <- factor(
+    heatmap_genes_complete$type,
+    levels = type_order 
+  )
   
   # Save the heatmap genes complete dataframe
   heatmap_genes_complete_name <- paste0(feat_imp_folder, "/heatmap_genes_complete_", cancer, "_feat_imp_df.csv")
   # write.csv(heatmap_genes_complete, heatmap_genes_complete_name, row.names = FALSE)
-  
+  rm(heatmap_genes_complete_name)
   
   # Generate the heatmap for the complete data (with all genes)
-  complete_genomic_heatmap <- ggplot(heatmap_genes_complete, aes(x = Feature, y = Target, fill = Gain)) +
-    geom_tile(colour = "black", lwd = 0.3) +
-    scale_fill_gradient2(low = "white", high = "#D21717") +
-    labs(
-      title = "",
-       x = "Gene",
-       y = "Base Learner",
-       # subtitle = paste0("Cancer type: ", cancer_type)
-     ) +
-    theme_minimal() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black", size = 10),
-      axis.text.y = element_text(angle = 0, hjust = 1, color = "black", size = 11),
-      plot.title = element_text(hjust = 0.5, size = 16),
-      plot.subtitle = element_text( size = 12),
-      legend.title = element_text(size = 15, face = "bold"),
-      legend.position = "top",
-      axis.title = element_text(size = 17, face = "bold"),
-      plot.caption = element_text(size = 11, face = "italic")
+  complete_genomic_heatmap <- ggplot() +
+      ggtitle(paste(cancer,"model: Unfiltered Genomic Importance"))+
+    # Facet: Aneu
+    geom_tile(
+      data = heatmap_genes_complete %>% filter(type == "Aneuploidy"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "Aneu Gain",
+      low = "white", high = "#D21717",
+      limits = c(
+        0,
+        heatmap_genes_complete %>% filter(type == "Aneuploidy") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+    ggnewscale::new_scale_fill() +
+    # Facet: Peri
+    geom_tile(
+      data = heatmap_genes_complete %>% filter(type == "peri CNV"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "Peri Gain",
+      low = "white", high = "#2E86AB",
+      limits = c(
+        0,
+        heatmap_genes_complete %>% filter(type == "peri CNV") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+    ggnewscale::new_scale_fill() +
+    # Facet: HRD
+    geom_tile(
+      data = heatmap_genes_complete %>% filter(type == "HRD"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "HRD Gain",
+      low = "white", high = "#9C27B0",
+      limits = c(
+        0,
+        heatmap_genes_complete %>% filter(type == "HRD") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+     geom_tile(
+      data = heatmap_genes_complete %>% filter(is_gene_loc),
+      aes(x = Feature, y = Target),  # now add inside aes
+      fill = NA, colour = "black", lwd = 0.8
+    ) +
+    facet_grid(type ~ ., scales = "free_y", space = "free_y") +
+    theme_minimal()+
+     theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.title.x = element_text(size = 13, face = "bold"),
+      axis.text.y = element_text(size = 10),
+      axis.title.y = element_text(size = 13, face = "bold"),
+      strip.text.y = element_text(size = 11, face = "bold"),
+      legend.position = "right",
+      legend.title = element_text(size = 11, face = "bold"),
+      legend.text = element_text(size = 9),
+      strip.placement = "outside",
+      panel.spacing.y = unit(0.65, "lines"),
+      strip.background = element_rect(color = "black", fill = "grey88", size = 0.3),
+      plot.title = element_text(size = 14, face = "italic", hjust = 0.5)
+    
     )
+  
+  print(complete_genomic_heatmap)
   
   # Save the complete genomic heatmap
   complete_genomic_heatmap_name <- paste0(plot_imp_folder, "/complete_genomic_heatmap_", cancer, ".png")
-  # ggsave(complete_genomic_heatmap_name, plot = complete_genomic_heatmap, width = 10, height = 8, dpi = 300)
+  ggsave(complete_genomic_heatmap_name, plot = complete_genomic_heatmap, width = 12, height = 10, dpi = 300)
+  rm(complete_genomic_heatmap_name)
 
   
-  # For the filtered data (with cis-genes of aneuploidy features removed)
+  # ARM-LEVEL FILTERING
   # Transform the dataframe to a format suitable for heatmap
-  heatmap_genes_filtered <- filtered_cancer_type_imp_df %>%
+  heatmap_genes_arm_filt <- arm_lvl_filtered_cancer_type_imp_df %>%
+  filter(
+    Feature %in% top_arm_lvl_filtered_feat_imp_df$Feature,
+  ) %>%
+  dplyr::select(Feature, Target, Gain) %>%
+  pivot_wider(names_from = Feature, values_from = Gain) %>%
+  replace(is.na(.), 0) %>%
+  pivot_longer(!Target, names_to = "Feature", values_to = "Gain") %>%
+  mutate(
+    Target = factor(Target, levels = response_features_order),
+    Gain = round(as.numeric(Gain), 2)
+  ) %>%
+  left_join(
+    gene_annotations %>% 
+      select(gene_name, chr_arm) %>% 
+      dplyr::rename(Feature = gene_name, gene_loc = chr_arm),
+    by = "Feature"
+  ) %>%
+  mutate(
+    is_gene_loc = Target == gene_loc,
+    type = ifelse(
+      Target %in% aneu_set, "Aneuploidy",
+      ifelse(Target %in% peri_set, "peri CNV", "HRD")
+    )
+  ) %>%
+  dplyr::arrange(Target, desc(Gain))
+  
+  # Set the order for the target type factor
+  heatmap_genes_arm_filt$type <- factor(
+    heatmap_genes_arm_filt$type,
+    levels = type_order 
+  )
+  
+  # Save the heatmap genes arm level filtered dataframe
+  heatmap_genes_arm_filt_name <- paste0(feat_imp_folder, "/heatmap_genes_arm_filt_", cancer, "_feat_imp_df.csv")
+  # write.csv(heatmap_genes_arm_filt, heatmap_genes_arm_filt_name, row.names = FALSE)
+  rm(heatmap_genes_arm_filt_name)
+
+  # Generate the heatmap for the arm filtered data (with cis-genes of aneuploidy features removed)
+  arm_filt_genomic_heatmap <- ggplot() +
+    ggtitle(paste(cancer, "model: Chromosome Arm Filtered Genomic Importance"))+
+    # Facet: Aneu
+    geom_tile(
+      data = heatmap_genes_arm_filt %>% filter(type == "Aneuploidy"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "Aneu Gain",
+      low = "white", high = "#D21717",
+      limits = c(
+        0,
+        heatmap_genes_arm_filt %>% filter(type == "Aneuploidy") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+    ggnewscale::new_scale_fill() +
+    # Facet: Peri
+    geom_tile(
+      data = heatmap_genes_arm_filt %>% filter(type == "peri CNV"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "Peri Gain",
+      low = "white", high = "#2E86AB",
+      limits = c(
+        0,
+        heatmap_genes_arm_filt %>% filter(type == "peri CNV") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+    ggnewscale::new_scale_fill() +
+    # Facet: HRD
+    geom_tile(
+      data = heatmap_genes_arm_filt %>% filter(type == "HRD"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "HRD Gain",
+      low = "white", high = "#9C27B0",
+      limits = c(
+        0,
+        heatmap_genes_arm_filt %>% filter(type == "HRD") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+     geom_tile(
+      data = heatmap_genes_arm_filt %>% filter(is_gene_loc),
+      aes(x = Feature, y = Target),  # now add inside aes
+      fill = "black", colour = "black", lwd = 0.3
+    ) +
+    facet_grid(type ~ ., scales = "free_y", space = "free_y") +
+    theme_minimal()+
+     theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.title.x = element_text(size = 13, face = "bold"),
+      axis.text.y = element_text(size = 10),
+      axis.title.y = element_text(size = 13, face = "bold"),
+      strip.text.y = element_text(size = 11, face = "bold"),
+      legend.position = "right",
+      legend.title = element_text(size = 11, face = "bold"),
+      legend.text = element_text(size = 9),
+      strip.placement = "outside",
+      panel.spacing.y = unit(0.65, "lines"),
+      strip.background = element_rect(color = "black", fill = "grey88", size = 0.3),
+      plot.title = element_text(size = 14, face = "italic", hjust = 0.5)
+    
+    )
+  
+  print(arm_filt_genomic_heatmap)
+  
+  # Save the filtered genomic heatmap
+  arm_filt_genomic_heatmap_name <- paste0(plot_imp_folder, "/arm_filt_genomic_heatmap_", cancer, ".png")
+  ggsave(arm_filt_genomic_heatmap_name, plot = arm_filt_genomic_heatmap, width = 12, height = 10, dpi = 300)
+  rm(arm_filt_genomic_heatmap_name)
+  
+  # CHROMOSOME-LEVEL FILTERING
+  # Transform the dataframe to a format suitable for heatmap
+  heatmap_genes_chrm_filt <- chrm_lvl_filtered_cancer_type_imp_df %>%
     filter(
-      Feature %in% top_filtered_feat_imp_df$Feature,
+      Feature %in% top_chrm_lvl_filtered_feat_imp_df$Feature,
     ) %>%
     dplyr::select(Feature, Target, Gain) %>%
     pivot_wider(names_from = Feature, values_from = Gain) %>%
@@ -295,39 +567,111 @@ for (cancer in can_types) {
       Target = factor(Target, levels = response_features_order),
       Gain = round(as.numeric(Gain), 2)
     ) %>%
+    left_join(
+      gene_annotations %>% 
+        select(gene_name, chr_arm) %>% 
+        dplyr::rename(Feature = gene_name, gene_loc = chr_arm),
+      by = "Feature"
+    ) %>% 
+    mutate(
+      is_gene_loc = Target == gene_loc,
+      type = ifelse(
+        Target %in% aneu_set, "Aneuploidy",
+        ifelse(Target %in% peri_set, "peri CNV", "HRD")
+      )
+    ) %>% 
     dplyr::arrange(Target, desc(Gain))
-  
-  # Save the heatmap genes filtered dataframe
-  heatmap_genes_filtered_name <- paste0(feat_imp_folder, "/heatmap_genes_filtered_", cancer, "_feat_imp_df.csv")
-  # write.csv(heatmap_genes_filtered, heatmap_genes_filtered_name, row.names = FALSE)
 
+  # Set the order for the target type factor
+  heatmap_genes_chrm_filt$type <- factor(
+    heatmap_genes_chrm_filt$type,
+    levels = type_order 
+  )
   
-  # Generate the heatmap for the filtered data (with cis-genes of aneuploidy features removed)
-  filtered_genomic_heatmap <- ggplot(heatmap_genes_filtered, aes(x = Feature, y = Target, fill = Gain)) +
-    geom_tile(colour = "black", lwd = 0.3) +
-    scale_fill_gradient2(low = "white", high = "#D21717") +
-    labs(
-      title = "",
-       x = "Gene",
-       y = "Base Learner",
-       # subtitle = paste0("Cancer type: ", cancer_type)
-     ) +
-    theme_minimal() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black", size = 10),
-      axis.text.y = element_text(angle = 0, hjust = 1, color = "black", size = 11),
-      plot.title = element_text(hjust = 0.5, size = 16),
-      plot.subtitle = element_text( size = 12),
-      legend.title = element_text(size = 15, face = "bold"),
-      legend.position = "top",
-      axis.title = element_text(size = 17, face = "bold"),
-      plot.caption = element_text(size = 11, face = "italic")
+  # Save the heatmap genes chromosome level filtered dataframe
+  heatmap_genes_chrm_filt_name <- paste0(feat_imp_folder, "/heatmap_genes_chrm_lvl_filtered_", cancer, "_feat_imp_df.csv")
+  # write.csv(heatmap_genes_chrm_filt, heatmap_genes_chrm_filt_name, row.names = FALSE)
+  rm(heatmap_genes_chrm_filt_name)
+  
+  
+  # Generate the heatmap for the chromosome lvl filtered data (with cis-genes of aneuploidy features removed)
+  chrm_filt_genomic_heatmap <- ggplot() +
+    ggtitle(paste(cancer , "model: Chromosome Filtered Genomic Importance"))+
+    # Facet: Aneu
+    geom_tile(
+      data = heatmap_genes_chrm_filt %>% filter(type == "Aneuploidy"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "Aneu Gain",
+      low = "white", high = "#D21717",
+      limits = c(
+        0,
+        heatmap_genes_chrm_filt %>% filter(type == "Aneuploidy") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+    ggnewscale::new_scale_fill() +
+    # Facet: Peri
+    geom_tile(
+      data = heatmap_genes_chrm_filt %>% filter(type == "peri CNV"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "Peri Gain",
+      low = "white", high = "#2E86AB",
+      limits = c(
+        0,
+        heatmap_genes_chrm_filt %>% filter(type == "peri CNV") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+    ggnewscale::new_scale_fill() +
+    # Facet: HRD
+    geom_tile(
+      data = heatmap_genes_chrm_filt %>% filter(type == "HRD"),
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "HRD Gain",
+      low = "white", high = "#9C27B0",
+      limits = c(
+        0,
+        heatmap_genes_chrm_filt %>% filter(type == "HRD") %>% 
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>% 
+          pull(max_gain) + 0.01
+      )
+    ) +
+     geom_tile(
+      data = heatmap_genes_chrm_filt %>% filter(is_gene_loc),
+      aes(x = Feature, y = Target),  # now add inside aes
+      fill = "black", colour = "black", lwd = 0.3
+    ) +
+    facet_grid(type ~ ., scales = "free_y", space = "free_y") +
+    theme_minimal()+
+     theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.title.x = element_text(size = 13, face = "bold"),
+      axis.text.y = element_text(size = 10),
+      axis.title.y = element_text(size = 13, face = "bold"),
+      strip.text.y = element_text(size = 11, face = "bold"),
+      legend.position = "right",
+      legend.title = element_text(size = 11, face = "bold"),
+      legend.text = element_text(size = 9),
+      strip.placement = "outside",
+      panel.spacing.y = unit(0.65, "lines"),
+      strip.background = element_rect(color = "black", fill = "grey88", size = 0.3),
+      plot.title = element_text(size = 14, face = "italic", hjust = 0.5)
     )
   
-  # Save the filtered genomic heatmap
-  filtered_genomic_heatmap_name <- paste0(plot_imp_folder, "/filtered_genomic_heatmap_", cancer, ".png")
-  # ggsave(filtered_genomic_heatmap_name, plot = filtered_genomic_heatmap, width = 10, height = 8, dpi = 300)
-
+  print(chrm_filt_genomic_heatmap)
+  
+  # Save the chromosome level filtered genomic heatmap
+  chrm_filt_genomic_heatmap_name <- paste0(plot_imp_folder, "/chrm_filt_genomic_heatmap_", cancer, ".png")
+  ggsave(chrm_filt_genomic_heatmap_name, plot = chrm_filt_genomic_heatmap, width = 12, height = 10, dpi = 300)
+  rm(chrm_filt_genomic_heatmap_name)
 }
 ```
 
