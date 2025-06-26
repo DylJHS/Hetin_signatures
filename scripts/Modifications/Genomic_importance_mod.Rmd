@@ -23,14 +23,10 @@ library(ggnewscale)
 
 Load the data and set up the environment
 ```{r}
-# Define the cancer types
-can_types <- c("BRCA", "LUAD", "LUSC", "HNSC")
-
 # folder with the feature importance files
 feat_imp_folder_pre <- "data/Model_output/Results/Feature_importance"
-feat_imp_folder_post <- "Base_feat_imp"
-base_feat_imp_plot_pre <- "data/Model_output/Plots/Feature_importance"
-base_feat_imp_plot_post <- "Base_feat_imp"
+feat_imp_plot_pre <- "data/Model_output/Plots/Feature_importance"
+feat_imp_post <- "Base_feat_imp"
 
 # Load the gene annotations 
 gene_annotations <- read.csv("data/secondary_data/gene_seqnames_nnotation_df.csv", stringsAsFactors = FALSE, row.names = NULL)
@@ -49,6 +45,10 @@ gene_annotations <- gene_annotations %>%
 # target feature type order for the heatmap
  type_order <- c("HRD", "peri CNV", "Aneuploidy")
  
+# Get the cancer types from the feature importance folder
+can_types <- list.dirs(feat_imp_folder_pre, full.names = FALSE, recursive = FALSE) %>%
+  basename()
+
 ```
 
 Loop through each cancer type, modify and save the feature importance files
@@ -57,14 +57,14 @@ for (cancer in can_types) {
   cat("\n\n\n", cancer)
   
   # Define the folders for the feature importance files 
-  feat_imp_folder <- file.path(feat_imp_folder_pre, cancer, feat_imp_folder_post)
+  feat_imp_folder <- file.path(feat_imp_folder_pre, cancer, feat_imp_post)
   complete_imp_folder <- file.path(feat_imp_folder, "complete")
   arm_lvl_filt_imp_folder <- file.path(feat_imp_folder, "arm_lvl_filtered")
   chrm_lvl_filt_imp_folder <- file.path(feat_imp_folder, "chrm_lvl_filtered")
   ori_imp_folder <- file.path(feat_imp_folder, "original")
   
   # Define the folders for the feature importance plots 
-  plot_imp_folder <- file.path(base_feat_imp_plot_pre, cancer, base_feat_imp_plot_post)
+  plot_imp_folder <- file.path(feat_imp_plot_pre, cancer, feat_imp_post)
   
   # Create the complete and filtered folders if they do not exist
   if (!dir.exists(complete_imp_folder)) {
@@ -344,7 +344,21 @@ for (cancer in can_types) {
   # Save the heatmap genes complete dataframe
   heatmap_genes_complete_name <- paste0(feat_imp_folder, "/heatmap_genes_complete_", cancer, "_feat_imp_df.csv")
   write.csv(heatmap_genes_complete, heatmap_genes_complete_name, row.names = FALSE)
-  rm(heatmap_genes_complete_name)
+  
+  # Set the order for the genes
+  complete_gene_order <- heatmap_genes_complete %>%
+    group_by(Feature) %>%
+    summarise(
+      features_impacted = sum(Gain > 0, na.rm = TRUE),
+      median_impact = median(Gain, na.rm = TRUE)
+    ) %>% 
+    arrange(desc(features_impacted), desc(median_impact)) %>% 
+    pull(Feature)
+  
+  heatmap_genes_complete$Feature <- factor(
+    heatmap_genes_complete$Feature,
+    levels = complete_gene_order
+  )
   
   # Generate the heatmap for the complete data (with all genes)
   complete_genomic_heatmap <- ggplot() +
@@ -424,7 +438,8 @@ for (cancer in can_types) {
   # Save the complete genomic heatmap
   complete_genomic_heatmap_name <- paste0(plot_imp_folder, "/complete_genomic_heatmap_", cancer, ".png")
   ggsave(complete_genomic_heatmap_name, plot = complete_genomic_heatmap, width = 12, height = 10, dpi = 300)
-  rm(complete_genomic_heatmap_name)
+  
+  rm(list = c("heatmap_genes_complete_name", "heatmap_genes_complete", "complete_genomic_heatmap_name", "complete_genomic_heatmap"))
 
   
   # ARM-LEVEL FILTERING
@@ -465,7 +480,21 @@ for (cancer in can_types) {
   # Save the heatmap genes arm level filtered dataframe
   heatmap_genes_arm_filt_name <- paste0(feat_imp_folder, "/heatmap_genes_arm_filt_", cancer, "_feat_imp_df.csv")
   write.csv(heatmap_genes_arm_filt, heatmap_genes_arm_filt_name, row.names = FALSE)
-  rm(heatmap_genes_arm_filt_name)
+  
+  # Set the order for the genes
+  arm_filt_gene_order <- heatmap_genes_arm_filt %>%
+    group_by(Feature) %>%
+    summarise(
+      features_impacted = sum(Gain > 0, na.rm = TRUE),
+      median_impact = median(Gain, na.rm = TRUE)
+    ) %>% 
+    arrange(desc(features_impacted), desc(median_impact)) %>% 
+    pull(Feature)
+  
+  heatmap_genes_arm_filt$Feature <- factor(
+    heatmap_genes_arm_filt$Feature,
+    levels = arm_filt_gene_order
+  )
 
   # Generate the heatmap for the arm filtered data (with cis-genes of aneuploidy features removed)
   arm_filt_genomic_heatmap <- ggplot() +
@@ -545,7 +574,9 @@ for (cancer in can_types) {
   # Save the filtered genomic heatmap
   arm_filt_genomic_heatmap_name <- paste0(plot_imp_folder, "/arm_filt_genomic_heatmap_", cancer, ".png")
   ggsave(arm_filt_genomic_heatmap_name, plot = arm_filt_genomic_heatmap, width = 12, height = 10, dpi = 300)
-  rm(arm_filt_genomic_heatmap_name)
+
+  rm(list = c("heatmap_genes_arm_filt_name", "heatmap_genes_arm_filt", "arm_filt_genomic_heatmap_name", "arm_filt_genomic_heatmap"))
+  
   
   # CHROMOSOME-LEVEL FILTERING
   # Transform the dataframe to a format suitable for heatmap
@@ -585,7 +616,21 @@ for (cancer in can_types) {
   # Save the heatmap genes chromosome level filtered dataframe
   heatmap_genes_chrm_filt_name <- paste0(feat_imp_folder, "/heatmap_genes_chrm_lvl_filtered_", cancer, "_feat_imp_df.csv")
   write.csv(heatmap_genes_chrm_filt, heatmap_genes_chrm_filt_name, row.names = FALSE)
-  rm(heatmap_genes_chrm_filt_name)
+  
+  # Set the order for the genes
+  chrm_filt_gene_order <- heatmap_genes_chrm_filt %>%
+    group_by(Feature) %>%
+    summarise(
+      features_impacted = sum(Gain > 0, na.rm = TRUE),
+      median_impact = median(Gain, na.rm = TRUE)
+    ) %>% 
+    arrange(desc(features_impacted), desc(median_impact)) %>% 
+    pull(Feature)
+  
+  heatmap_genes_chrm_filt$Feature <- factor(
+    heatmap_genes_chrm_filt$Feature,
+    levels = chrm_filt_gene_order
+  )
   
   
   # Generate the heatmap for the chromosome lvl filtered data (with cis-genes of aneuploidy features removed)
@@ -665,7 +710,8 @@ for (cancer in can_types) {
   # Save the chromosome level filtered genomic heatmap
   chrm_filt_genomic_heatmap_name <- paste0(plot_imp_folder, "/chrm_filt_genomic_heatmap_", cancer, ".png")
   ggsave(chrm_filt_genomic_heatmap_name, plot = chrm_filt_genomic_heatmap, width = 12, height = 10, dpi = 300)
-  rm(chrm_filt_genomic_heatmap_name)
+  
+  rm(list = c("heatmap_genes_chrm_filt_name", "heatmap_genes_chrm_filt", "chrm_filt_genomic_heatmap_name", "chrm_filt_genomic_heatmap"))
 }
 ```
 

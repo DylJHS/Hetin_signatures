@@ -28,11 +28,13 @@
 - Thinking about using a fast but comprehensive method (TreeSHAP)followed up with a validation of the results using a deeper method (LOFO) 
 - Clustering colinear genes prior to the training of the model might still be beneficial in increasing the runspeed, also remving colinear affects can enable the use of Permuation importance instead of LOFO
 
+
 05/06/25
 - Wrote note word doc (XGBoost Feature Importance Metrics) on the Feature importance metrics and their advantages and disadvantages in terms of the project
 - Downlaoding the Homo_sapiens.GRCh38.114.chr.gtf.gz to use as the gene annotation df
 - Created the df for referencing the genes and their chromosome location 
 - Created a smaller one for only the genes of interest
+
 
 06/06/25
 - Finished looping over the different cancer types and base layer feature importance results removing genes which are located on the same chromosome for aneuploidy target features
@@ -40,23 +42,28 @@
 - Have been doing this only for the aneuploid features but could still need to implement in some manner on the percentromeric cnvs
 - For the peri cnv feature importance modifications, could remove all genes on the chromosome (seems excessive), remove genes that are close to /wihtin the pericentromeric range 
 
+
 10/06/25
 - Need to edit the gene reduction to only include genes that are one the same chromosome arm
 - Will do the same for pericentromeric CNVs 
 
+
 11/06/25
 - Find the centromeric position of each chromosome or find gtf gene annotaion file that contains the chromosome arm annotation too
+
 
 12/06/25
 - Downloaded the centromeric positions from: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/
 - the file that was used was: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/centromeres.txt.gz
 - Need to combine the gene_annotation gtf and query it with the centromere annotation df to label genes to their corresponding arm
 
+
 16/06/25
 - Added the chromosome arm labels to the gene annotation file for the referencing
 - Edited the Genomic_importance_mod.RMD script to integrate this new df into the pipeline so that it is able to identify the genes from the same chr & arm as the Target feature and remove them from the feat importance heatmap
 - Produce teh visualisations for the modified resutls
 - Think about how to incorporate this tactic for the pericentromeric CNVs
+
 
 17/06/25
 - by removing cis genes that appear on the same features, we are losign the ability to identify cis-drivers of the target feature
@@ -67,11 +74,13 @@
 - Finished the edit for the genomic feature importance script
 - Need to edit the interaction feature importance to exclude the a self-assingment where the most important base learner is teh same as the meta learner
 
+
 18/06/25
 - Don't need to edit the interaction plot or script since all interactions are already displayed by the plot
 - Reasoning for cis-gene exclusion strategy :
 		"We kept all genes—including those on the target arm—inside each arm-aneuploidy learner during training, but we hide the same-arm (“cis”) genes when we visualise feature importance. This compromise preserves the classifier’s best-possible accuracy (because the model can still exploit the strong expression-dosage signal of cis genes) while preventing a circular interpretation that merely restates the copy-number event. The trade-off is clear: by anchoring the model on highly predictive cis features we inevitably down-weight trans-acting genes in the raw Gain / SHAP distribution, so the trans-only importance heatmap can look muted. Had we removed cis genes at training time we would likely recover bolder trans-acting importances, but at the cost of poorer overall performance and a departure from the baseline model we compare throughout the bottom-up workflow. Thus, masking at interpretation gives a defensible balance between interpretability and robustness, and any residual under-representation of trans effects is made explicit rather than silently baked into weaker models."
 - Fitlered out the cis-genes from the heatmaps 
+
 
 19/06/25
 - Finding genes that differ or remain between the filtered vs unfiltered genomic importance outputs
@@ -107,4 +116,10 @@
 
 
 24/06/25
-- Modifying the graphs on the general model heatmaps splitting by target feature and giving each its own gradietn and legend
+- Modifying the graphs on the general model heatmaps splitting by target feature and giving each its own gradient and legend
+
+
+26/06/25
+- Think about clustering the genes or sorting them in a way that is pleasant to look at 
+- Modifying the interaction contribution heatmaps 
+- Separate gradient for the self-interactions

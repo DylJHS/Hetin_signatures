@@ -71,6 +71,18 @@ for (cancer_type_folder in list.dirs(int_imp_folder_pre, full.names = TRUE, recu
     "ai1", "lst1", "loh_hrd"
   )
   
+  # Save the full cancer type feature interaction importance data frame
+  cancer_int_imp_df <- cancer_int_imp_df %>%
+    mutate(
+      Target = factor(Target, levels = response_features_order),
+      Feature = factor(Feature, levels = response_features_order)
+    ) %>%
+    arrange(Target, desc(Gain)) 
+  write.csv(cancer_int_imp_df, 
+            file = file.path(cancer_type_folder, "Meta_feat_imp/cancer_int_imp_df.csv"), 
+            row.names = FALSE)
+  
+  # Create the heatmap data frame
   heatmap_df <- cancer_int_imp_df %>%
     select(Feature, Gain, Target) %>%
     pivot_wider(
@@ -88,37 +100,67 @@ for (cancer_type_folder in list.dirs(int_imp_folder_pre, full.names = TRUE, recu
       Feature = factor(Feature, levels = response_features_order),
       Target = factor(Target, levels = response_features_order),
       Gain = as.numeric(Gain)
-    )
-
-  # Remove the gain values from the self-interactions
-  heatmap_df[heatmap_df$is_self == "TRUE", "Gain"] <- as.numeric(0)
+    ) %>%
+    dplyr::arrange(Target, desc(Gain))
   
-  interaction_heatmap_df <-  heatmap_df %>%
-  dplyr::arrange(Target, desc(Gain))
+  # Save the heatmap data frame
+  write.csv(heatmap_df, 
+            file = file.path(cancer_type_folder, "Meta_feat_imp/heatmap_df.csv"), 
+            row.names = FALSE)
 
   # Generate the heatmap for the complete data (with all genes)
   interaction_heatmap <- ggplot() +
-      ggtitle(paste(cancer_type),"model: Interaction Importance")+
+      ggtitle(paste(cancer_type,"model: Interaction Importance"))+
     geom_tile(
-      data = heatmap_df,
+      data = heatmap_df %>% filter(!is_self),
       aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
     ) +
     scale_fill_gradient(
-      name = "Gain",
+      name = "Inter-Gain",
       low = "white", high = "#D21717",
       limits = c(
         0,
-        heatmap_df %>%
+        heatmap_df %>% filter(!is_self) %>%
           summarise(max_gain = max(Gain, na.rm = TRUE)) %>%
           pull(max_gain) + 0.01
       )
     ) +
+    ggnewscale::new_scale_fill() +
      geom_tile(
       data = heatmap_df %>% filter(is_self),
-      aes(x = Feature, y = Target),  # now add inside aes
-      fill = "black", colour = "black", lwd = 0.3
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "Intra-Gain",
+      low = "white", high = "#2E86AB",
+      limits = c(0, 1)
+    ) +
+    theme_minimal()+
+     theme(
+      axis.text.x = element_text(angle = 48, hjust = 1, size = 10),
+      axis.title.x = element_text(size = 13, face = "bold"),
+      axis.text.y = element_text(size = 10),
+      axis.title.y = element_text(size = 13, face = "bold"),
+      strip.text.y = element_text(size = 11, face = "bold"),
+      legend.position = "right",
+      legend.title = element_text(size = 11, face = "bold"),
+      legend.text = element_text(size = 9),
+      strip.placement = "outside",
+      panel.spacing.y = unit(0.65, "lines"),
+      strip.background = element_rect(color = "black", fill = "grey88", size = 0.3),
+      plot.title = element_text(size = 14, face = "italic", hjust = 0.5)
+    
     )
+    
   print(interaction_heatmap)
+  
+  # Save the heatmap
+  heatmap_path <- file.path(int_imp_plot_pre, cancer_type, "Meta_feat_imp/interaction_heatmap.png")
+  ggsave(
+    filename = heatmap_path,
+    plot = interaction_heatmap,
+    width = 10, height = 8, dpi = 300
+  )
 }
 ```
 
