@@ -1,0 +1,124 @@
+---
+title: "Feature_interaction_importance_heatmap_edits"
+output: html_document
+date: "2025-06-23"
+note: "This is a test document for editing the feature interaction importance heatmap, in order to break out the features by type and generate separate gradents for each type."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "D:/projects/HetIN_signatures/")
+```
+
+Load the packages
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(ggnewscale)
+library(S4Vectors)
+```
+
+Load the data
+```{r}
+# folder with the feature importance files
+int_imp_folder_pre <- "data/Model_output/Results/Feature_importance"
+int_imp_plot_pre <- "data/Model_output/Plots/Feature_importance"
+
+
+# Set the order for the response features
+response_features_order <- zipup(
+  paste0(1:22, "p"), 
+  paste0(1:22, "q")
+) %>% 
+  unlist()
+```
+
+```{r}
+for (cancer_type_folder in list.dirs(int_imp_folder_pre, full.names = TRUE, recursive = FALSE)) {
+  cancer_type <- basename(cancer_type_folder)
+  cat("\n\nProcessing cancer type:", cancer_type, "\n")
+  
+  # Initialise the full cancer type feature interaction importance data frame
+  cancer_int_imp_df <- data.frame()
+  
+  # Get the feature interaction result df
+  int_imp_originals <- file.path(cancer_type_folder, "Meta_feat_imp/original")
+  for (original_df in list.files(int_imp_originals, pattern = "\\.csv$", full.names = TRUE)) {
+    # cat(paste("\nProcessing:", original_df))
+    
+    # Get the target feature 
+    file_name <- basename(original_df)
+    # cat(paste("Processing:", file_name, "\n"))
+    target_feature <- str_split(file_name, "_feature")[[1]][1]
+    # cat(paste("Target feature:", target_feature, "\n"))
+    
+    # Read the original df
+    original_df <- read.csv(original_df, stringsAsFactors = FALSE, row.names = NULL) %>% 
+      select(-1) %>% 
+      mutate(
+        Target = target_feature
+      )
+    
+    # Append to the full cancer type df
+    cancer_int_imp_df <- rbind(cancer_int_imp_df, original_df)
+  }
+  
+  # Set the order for the Target features
+  response_features_order <- c(
+    zipup(paste0(1:22, "p"), paste0(1:22, "q")) %>% unlist(),
+    sort(grep("^peri", unique(cancer_int_imp_df$Target), value = TRUE)),
+    "ai1", "lst1", "loh_hrd"
+  )
+  
+  heatmap_df <- cancer_int_imp_df %>%
+    select(Feature, Gain, Target) %>%
+    pivot_wider(
+      names_from = Feature,
+      values_from = Gain,
+      values_fill = 0
+    ) %>% 
+    pivot_longer(
+      cols = -Target,
+      names_to = "Feature",
+      values_to = "Gain"
+    ) %>%  
+    mutate(
+      is_self = ifelse(Feature == Target, TRUE, FALSE),
+      Feature = factor(Feature, levels = response_features_order),
+      Target = factor(Target, levels = response_features_order),
+      Gain = as.numeric(Gain)
+    )
+
+  # Remove the gain values from the self-interactions
+  heatmap_df[heatmap_df$is_self == "TRUE", "Gain"] <- as.numeric(0)
+  
+  interaction_heatmap_df <-  heatmap_df %>%
+  dplyr::arrange(Target, desc(Gain))
+
+  # Generate the heatmap for the complete data (with all genes)
+  interaction_heatmap <- ggplot() +
+      ggtitle(paste(cancer_type),"model: Interaction Importance")+
+    geom_tile(
+      data = heatmap_df,
+      aes(x = Feature, y = Target, fill = Gain), colour = "black", lwd = 0.3
+    ) +
+    scale_fill_gradient(
+      name = "Gain",
+      low = "white", high = "#D21717",
+      limits = c(
+        0,
+        heatmap_df %>%
+          summarise(max_gain = max(Gain, na.rm = TRUE)) %>%
+          pull(max_gain) + 0.01
+      )
+    ) +
+     geom_tile(
+      data = heatmap_df %>% filter(is_self),
+      aes(x = Feature, y = Target),  # now add inside aes
+      fill = "black", colour = "black", lwd = 0.3
+    )
+  print(interaction_heatmap)
+}
+```
+

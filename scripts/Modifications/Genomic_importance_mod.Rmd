@@ -46,15 +46,9 @@ gene_annotations <- gene_annotations %>%
     chr_arm = paste0(seqnames, arm) # combine the chromosome and arm into new column
   )
 
-# Set the order for the response features
-response_features_order <- zipup(
-  paste0(1:22, "p"), 
-  paste0(1:22, "q")
-) %>% 
-  unlist() 
-
 # target feature type order for the heatmap
  type_order <- c("HRD", "peri CNV", "Aneuploidy")
+ 
 ```
 
 Loop through each cancer type, modify and save the feature importance files
@@ -144,7 +138,7 @@ for (cancer in can_types) {
       
     # Save to the complete folder
     complete_df_name <- paste0(complete_imp_folder, "/complete_", file_name)
-    # write.csv(feat_joind_df, complete_df_name, row.names = FALSE, )
+    write.csv(feat_joind_df, complete_df_name, row.names = FALSE, )
     
     
     # Append to the fully complete df
@@ -164,7 +158,7 @@ for (cancer in can_types) {
       
       # Save the modified dataframe
       arm_lvl_filtered_df_name <- paste0(arm_lvl_filt_imp_folder, "/arm_lvl_filt_", file_name)
-      # write.csv(filt_feat_joind_df, filtered_df_name, row.names = FALSE)
+      write.csv(arm_lvl_filt_feat_joind_df, arm_lvl_filtered_df_name, row.names = FALSE)
       
       # Append the fully filtered df
       arm_lvl_filtered_cancer_type_imp_df <- rbind(arm_lvl_filtered_cancer_type_imp_df, arm_lvl_filt_feat_joind_df)
@@ -176,7 +170,7 @@ for (cancer in can_types) {
       
       # Save the modified dataframe
       chrm_lvl_filtered_df_name <- paste0(chrm_lvl_filt_imp_folder, "/chrm_lvl_filt_", file_name)
-      # write.csv(chrm_lvl_filt_feat_joind_df, chrm_lvl_filtered_df_name, row.names = FALSE)
+      write.csv(chrm_lvl_filt_feat_joind_df, chrm_lvl_filtered_df_name, row.names = FALSE)
       
       # Append the fully chromosome level filtered df
       chrm_lvl_filtered_cancer_type_imp_df <- rbind(chrm_lvl_filtered_cancer_type_imp_df, chrm_lvl_filt_feat_joind_df)
@@ -187,7 +181,7 @@ for (cancer in can_types) {
       # ARM-LEVEL FILTERING
       # save the file to the filtered folder
       arm_lvl_filtered_df_name <- paste0(arm_lvl_filt_imp_folder, "/arm_lvl_filt_", file_name)
-      # write.csv(feat_joind_df, arm_lvl_filtered_df_name, row.names = FALSE)
+      write.csv(feat_joind_df, arm_lvl_filtered_df_name, row.names = FALSE)
       
       # Append the fully filtered df with this target's feature importance df
       arm_lvl_filtered_cancer_type_imp_df <- rbind(arm_lvl_filtered_cancer_type_imp_df, feat_joind_df)
@@ -195,14 +189,14 @@ for (cancer in can_types) {
       # CHROMOSOME-LEVEL FILTERING
       # save the file to the filtered folder
       chrm_lvl_filtered_df_name <- paste0(chrm_lvl_filt_imp_folder, "/chrm_lvl_filt_", file_name)
-      # write.csv(feat_joind_df, chrm_lvl_filtered_df_name, row.names = FALSE)
+      write.csv(feat_joind_df, chrm_lvl_filtered_df_name, row.names = FALSE)
       
       # Append the fully filtered df with this target's feature importance df
       chrm_lvl_filtered_cancer_type_imp_df <- rbind(chrm_lvl_filtered_cancer_type_imp_df, feat_joind_df)
     }
   
     # # remove the variables to save memory
-    objs_to_rm <- c("feature_df", "feat_joind_df", "filtered_df_name", "complete_df_name", "filt_feat_joind_df")
+    objs_to_rm <- c("feature_df", "feat_joind_df", "arm_lvl_filtered_df_name", "complete_df_name", "filt_feat_joind_df")
     rm(list = objs_to_rm[objs_to_rm %in% ls()])
     rm(objs_to_rm)
   }
@@ -216,19 +210,19 @@ for (cancer in can_types) {
   
   # Save the full complete cancer type feature importance df
   full_complete_cancer_feat_imp_name <- paste0(feat_imp_folder, "/full_complete_", cancer, "_feat_imp.csv")
-  # write.csv(complete_cancer_type_imp_df, full_complete_cancer_feat_imp_name, row.names = FALSE)
+  write.csv(complete_cancer_type_imp_df, full_complete_cancer_feat_imp_name, row.names = FALSE)
   rm(full_complete_cancer_feat_imp_name)
   
   # ARM-LEVEL FILTERING
   # Save the full filtered cancer type feature importance df
-  full_filtered_cancer_feat_imp_name <- paste0(feat_imp_folder, "/full_filtered_", cancer, "_feat_imp.csv")
-  # write.csv(filtered_cancer_type_imp_df, full_filtered_cancer_feat_imp_name, row.names = FALSE)
-  rm(full_filtered_cancer_feat_imp_name)
+  arm_lvl_filt_cancer_type_imp_df_name <- paste0(feat_imp_folder, "/full_filtered_", cancer, "_feat_imp.csv")
+  write.csv(arm_lvl_filtered_cancer_type_imp_df, arm_lvl_filt_cancer_type_imp_df_name, row.names = FALSE)
+  rm(arm_lvl_filt_cancer_type_imp_df_name)
   
   # CHROMOSOME-LEVEL FILTERING
   # Save the full chromosome level filtered cancer type feature importance df
   full_chrm_lvl_filtered_cancer_feat_imp_name <- paste0(feat_imp_folder, "/full_chrm_lvl_filtered_", cancer, "_feat_imp.csv")
-  # write.csv(chrm_lvl_filtered_cancer_type_imp_df, full_chrm_lvl_filtered_cancer_feat_imp_name, row.names = FALSE)
+  write.csv(chrm_lvl_filtered_cancer_type_imp_df, full_chrm_lvl_filtered_cancer_feat_imp_name, row.names = FALSE)
   rm(full_chrm_lvl_filtered_cancer_feat_imp_name)
   
   
@@ -240,7 +234,7 @@ for (cancer in can_types) {
   
   # Save the top genes feature importance for the unfiltered df
   top_complete_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_complete_", cancer, "_feat_imp.csv")
-  # write.csv(top_complete_feat_imp_df, top_complete_feat_imp_name, row.names = FALSE)
+  write.csv(top_complete_feat_imp_df, top_complete_feat_imp_name, row.names = FALSE)
   rm(top_complete_feat_imp_name)
   
   # ARM-LEVEL FILTERING
@@ -253,7 +247,7 @@ for (cancer in can_types) {
   # Save the top genes feature importance for the df which is filtered to remove
   # the genes that are arm-level cis-genes of aneuploidy features
   top_arm_lvl_filtered_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_filtered_", cancer, "_feat_imp.csv")
-  # write.csv(top_arm_lvl_filtered_feat_imp_df, top_arm_lvl_filtered_feat_imp_name, row.names = FALSE)
+  write.csv(top_arm_lvl_filtered_feat_imp_df, top_arm_lvl_filtered_feat_imp_name, row.names = FALSE)
   rm(top_arm_lvl_filtered_feat_imp_name)
   
   # CHROMOSOME-LEVEL FILTERING
@@ -266,7 +260,7 @@ for (cancer in can_types) {
   # Save the top genes feature importance for the df which is filtered to remove
   # the genes that are cis-genes of aneuploidy features
   top_chrm_lvl_filtered_feat_imp_name <- paste0(feat_imp_folder, "/top_genes_chrm_lvl_filtered_", cancer, "_feat_imp.csv")
-  # write.csv(top_chrm_lvl_filtered_feat_imp_df, top_chrm_lvl_filtered_feat_imp_name, row.names = FALSE)
+  write.csv(top_chrm_lvl_filtered_feat_imp_df, top_chrm_lvl_filtered_feat_imp_name, row.names = FALSE)
   rm(top_chrm_lvl_filtered_feat_imp_name)
   
   
@@ -306,7 +300,7 @@ for (cancer in can_types) {
   
   # Save the combined top genes feature importance
   top_genes_combined_name <- paste0(feat_imp_folder, "/top_genes_combined_", cancer, "_feat_imp.csv")
-  # write.csv(top_genes_combined, top_genes_combined_name, row.names = FALSE)
+  write.csv(top_genes_combined, top_genes_combined_name, row.names = FALSE)
   rm(top_genes_combined_name)
   
   
@@ -349,7 +343,7 @@ for (cancer in can_types) {
   
   # Save the heatmap genes complete dataframe
   heatmap_genes_complete_name <- paste0(feat_imp_folder, "/heatmap_genes_complete_", cancer, "_feat_imp_df.csv")
-  # write.csv(heatmap_genes_complete, heatmap_genes_complete_name, row.names = FALSE)
+  write.csv(heatmap_genes_complete, heatmap_genes_complete_name, row.names = FALSE)
   rm(heatmap_genes_complete_name)
   
   # Generate the heatmap for the complete data (with all genes)
@@ -470,7 +464,7 @@ for (cancer in can_types) {
   
   # Save the heatmap genes arm level filtered dataframe
   heatmap_genes_arm_filt_name <- paste0(feat_imp_folder, "/heatmap_genes_arm_filt_", cancer, "_feat_imp_df.csv")
-  # write.csv(heatmap_genes_arm_filt, heatmap_genes_arm_filt_name, row.names = FALSE)
+  write.csv(heatmap_genes_arm_filt, heatmap_genes_arm_filt_name, row.names = FALSE)
   rm(heatmap_genes_arm_filt_name)
 
   # Generate the heatmap for the arm filtered data (with cis-genes of aneuploidy features removed)
@@ -590,7 +584,7 @@ for (cancer in can_types) {
   
   # Save the heatmap genes chromosome level filtered dataframe
   heatmap_genes_chrm_filt_name <- paste0(feat_imp_folder, "/heatmap_genes_chrm_lvl_filtered_", cancer, "_feat_imp_df.csv")
-  # write.csv(heatmap_genes_chrm_filt, heatmap_genes_chrm_filt_name, row.names = FALSE)
+  write.csv(heatmap_genes_chrm_filt, heatmap_genes_chrm_filt_name, row.names = FALSE)
   rm(heatmap_genes_chrm_filt_name)
   
   

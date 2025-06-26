@@ -107,4 +107,4 @@
 
 
 24/06/25
-- Modifying the graphs on teh general model heatmaps splitting by target feature and giving each its own gradietn and legend
+- Modifying the graphs on the general model heatmaps splitting by target feature and giving each its own gradietn and legend
