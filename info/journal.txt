@@ -122,4 +122,11 @@
 26/06/25
 - Think about clustering the genes or sorting them in a way that is pleasant to look at 
 - Modifying the interaction contribution heatmaps 
-- Separate gradient for the self-interactions
+- Separated gradient for the self-interactions vs inter-contributions
+- Arranged the genes by the the number of targets that they each impact (highest to lowest)
+
+
+27/06/25
+- editting the genomic importance modfication script to add modularity in the form of functions 
+- Plotting the top n genes by importance for each target feature
+- Added the chromosome of origin for each of the genes in the graph
